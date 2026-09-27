@@ -12,7 +12,10 @@
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: #0f172a; }
     ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-    .selected-player { box-shadow: 0 0 15px rgba(234, 179, 8, 0.6); border-color: #eab308 !important; }
+    .my-hero-card { 
+      box-shadow: 0 0 20px rgba(234, 179, 8, 0.45); 
+      border-color: #facc15 !important; 
+    }
   </style>
 </head>
 <body class="p-4 md:p-8 min-h-screen flex flex-col">
@@ -59,7 +62,7 @@
     <div class="bg-slate-900/50 border border-emerald-900/30 rounded-2xl p-4">
       <div class="flex justify-between items-center mb-3">
         <h2 class="text-sm font-black text-emerald-400 tracking-wider">СИЛЫ СВЕТА (RADIANT)</h2>
-        <span class="text-[11px] text-amber-400 font-semibold">Нажмите на звёздочку ★, чтобы выбрать своего героя</span>
+        <span class="text-[11px] text-amber-400 font-semibold">Нажмите «Я играю на нём» под своим героем</span>
       </div>
       <div class="grid grid-cols-5 gap-2" id="rad-slots"></div>
     </div>
@@ -158,14 +161,14 @@
 
     let targetSlot = null;
     let currentAttr = 'all';
-    let myHeroSlotIdx = null; // Индекс слота, за которого играет пользователь (0..4)
+    let myHeroSlotIdx = null; // Индекс слота игрока (0..4)
 
     const draft = {
       rad: [null, null, null, null, null],
       dire: [null, null, null, null, null]
     };
 
-    const rolesNames = ['Поз. 1 Керри', 'Поз. 2 Мид', 'Поз. 3 Хард', 'Поз. 4 Частичная поддержка', 'Поз. 5 Полная поддержка'];
+    const rolesNames = ['Поз. 1 Керри', 'Поз. 2 Мид', 'Поз. 3 Хард', 'Поз. 4 Семи-сап', 'Поз. 5 Фулл-сап'];
 
     async function init() {
       try {
@@ -199,14 +202,14 @@
         draft[team].forEach((heroId, idx) => {
           const hero = heroesById[heroId];
           const div = document.createElement('div');
-          div.className = "flex flex-col items-center cursor-pointer";
-          div.onclick = () => openModal(team, idx);
+          div.className = "flex flex-col items-center";
 
           const isMe = (team === 'rad' && myHeroSlotIdx === idx && heroId !== null);
 
           if (hero) {
             div.innerHTML = `
-              <div class="relative w-full aspect-[16/9] rounded-xl overflow-hidden border-2 ${isMe ? 'selected-player' : team === 'rad' ? 'border-emerald-500' : 'border-red-500'} shadow-md">
+              <div onclick="openModal('${team}', ${idx})" 
+                   class="relative w-full aspect-[16/9] rounded-xl overflow-hidden border-2 cursor-pointer transition ${isMe ? 'my-hero-card' : team === 'rad' ? 'border-emerald-500/80 hover:border-emerald-400' : 'border-red-500/80 hover:border-red-400'} shadow-md">
                 <img src="${getHeroImage(hero)}" class="w-full h-full object-cover">
                 
                 <!-- Крестик удаления -->
@@ -214,21 +217,23 @@
                         class="absolute top-1 right-1 w-5 h-5 bg-black/80 hover:bg-red-600 rounded text-white flex items-center justify-center text-xs font-black transition">
                   &times;
                 </button>
-
-                <!-- Кнопка 'Я играю' (только для Radiant) -->
-                ${team === 'rad' ? `
-                  <button onclick="event.stopPropagation(); setMyHero(${idx})" title="Я играю на этом герое"
-                          class="absolute bottom-1 left-1 px-1.5 py-0.5 rounded text-[10px] font-black transition flex items-center gap-1 ${isMe ? 'bg-amber-400 text-black shadow-lg font-bold' : 'bg-black/75 hover:bg-amber-400 hover:text-black text-amber-300'}">
-                    ★ ${isMe ? 'Я играю' : 'Я'}
-                  </button>
-                ` : ''}
               </div>
+              
               <span class="text-[11px] font-semibold mt-1 truncate max-w-full ${isMe ? 'text-amber-400 font-bold' : 'text-slate-300'}">${hero.localized_name}</span>
-              <span class="text-[9px] text-slate-500">${rolesNames[idx]}</span>
+              <span class="text-[9px] text-slate-500 mb-1">${rolesNames[idx]}</span>
+
+              <!-- Кнопка "Я играю" под карточкой (только для Radiant) -->
+              ${team === 'rad' ? `
+                <button onclick="setMyHero(${idx})" 
+                        class="w-full py-1 px-1 rounded-lg text-[10px] font-extrabold uppercase transition border ${isMe ? 'bg-amber-400 text-black border-amber-300 shadow-md' : 'bg-slate-800/90 hover:bg-amber-400 hover:text-black text-amber-300 border-amber-400/30'}">
+                  ${isMe ? '✓ Твой герой' : '★ Я играю'}
+                </button>
+              ` : ''}
             `;
           } else {
             div.innerHTML = `
-              <div class="w-full aspect-[16/9] rounded-xl border-2 border-dashed border-slate-800 hover:border-slate-600 flex flex-col items-center justify-center bg-slate-900/60 transition">
+              <div onclick="openModal('${team}', ${idx})"
+                   class="w-full aspect-[16/9] rounded-xl border-2 border-dashed border-slate-800 hover:border-slate-600 flex flex-col items-center justify-center bg-slate-900/60 cursor-pointer transition">
                 <span class="text-xl text-slate-500 font-light">+</span>
               </div>
               <span class="text-[10px] text-slate-500 mt-1">${rolesNames[idx]}</span>
@@ -243,13 +248,16 @@
     }
 
     function setMyHero(idx) {
-      if (myHeroSlotIdx === idx) {
-        myHeroSlotIdx = null; // сбросить выбор
-      } else {
-        myHeroSlotIdx = idx;
-      }
+      if (draft.rad[idx] === null) return;
+      myHeroSlotIdx = idx;
       renderSlots();
       renderPersonalStrategy();
+      
+      // Плавная прокрутка к блоку стратегии
+      setTimeout(() => {
+        const sec = document.getElementById('player-strategy-section');
+        if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 50);
     }
 
     function openModal(team, idx) {
@@ -309,10 +317,12 @@
     function selectHero(heroId) {
       if (!targetSlot) return;
       draft[targetSlot.team][targetSlot.idx] = heroId;
-      // Если это первый выбранный союзник, сразу предложим его как своего героя
+
+      // Если это первый выбранный союзник, сразу делаем его своим героем
       if (targetSlot.team === 'rad' && myHeroSlotIdx === null) {
         myHeroSlotIdx = targetSlot.idx;
       }
+
       closeModal();
       renderSlots();
       recalculateDraft();
@@ -322,7 +332,9 @@
     function removeHero(team, idx) {
       draft[team][idx] = null;
       if (team === 'rad' && myHeroSlotIdx === idx) {
-        myHeroSlotIdx = null;
+        // Переключаем на другого заполненного героя Света
+        const nextIdx = draft.rad.findIndex(id => id !== null);
+        myHeroSlotIdx = (nextIdx !== -1) ? nextIdx : null;
       }
       renderSlots();
       recalculateDraft();
@@ -351,7 +363,6 @@
       }
     }
 
-    // Расчёт винрейта драфта
     async function recalculateDraft() {
       const activeEnemies = draft.dire.filter(Boolean);
       const activeAllies = draft.rad.filter(Boolean);
@@ -462,14 +473,17 @@
         if (myHeroSlotIdx === null) myHeroSlotIdx = emptyIdx;
         renderSlots();
         recalculateDraft();
+        renderPersonalStrategy();
       } else {
         alert('Все слоты Сил Света уже заполнены! Освободите один из слотов.');
       }
     }
 
-    // Генерация персональной страницы билда под текущий драфт
+    // Генерация персонального разбора
     function renderPersonalStrategy() {
       const section = document.getElementById('player-strategy-section');
+      
+      // Если ни один герой в Radiant не выбран
       if (myHeroSlotIdx === null || !draft.rad[myHeroSlotIdx]) {
         section.classList.add('hidden');
         return;
@@ -482,10 +496,6 @@
       const myRole = rolesNames[myHeroSlotIdx];
       const enemies = draft.dire.map(id => heroesById[id]).filter(Boolean);
 
-      // Определяем прямых оппонентов по линии:
-      // Поз 1 (Safe) стоит против вражеской Поз 3 и 4 (Offlane)
-      // Поз 2 (Mid) стоит 1v1 против вражеской Поз 2 (Mid)
-      // Поз 3 (Offlane) стоит против вражеской Поз 1 и 5 (Safe)
       let laneEnemies = [];
       if (myHeroSlotIdx === 0 || myHeroSlotIdx === 4) {
         laneEnemies = [draft.dire[2], draft.dire[3]].map(id => heroesById[id]).filter(Boolean);
@@ -495,38 +505,35 @@
         laneEnemies = [draft.dire[0], draft.dire[4]].map(id => heroesById[id]).filter(Boolean);
       }
 
-      // Генерация динамических рекомендаций закупа под линию
-      const hasSpammers = enemies.some(e => ['Bristleback', 'Batrider', 'Zeus', 'Skywrath Mage', 'Phantom Assassin', 'Viper'].includes(e.localized_name));
-      const hasHeavyPhys = enemies.some(e => ['Slardar', 'Axe', 'Templar Assassin', 'Phantom Assassin', 'Sven'].includes(e.localized_name));
-      const hasMagicBurst = enemies.some(e => ['Lina', 'Lion', 'Leshrak', 'Puck', 'Storm Spirit', 'Zeus'].includes(e.localized_name));
+      const hasSpammers = enemies.some(e => ['Bristleback', 'Batrider', 'Zeus', 'Skywrath Mage', 'Phantom Assassin', 'Viper', 'Tinker'].includes(e.localized_name));
+      const hasMagicBurst = enemies.some(e => ['Lina', 'Lion', 'Leshrac', 'Puck', 'Storm Spirit', 'Zeus'].includes(e.localized_name));
 
       const startItems = [];
       startItems.push({ name: 'Tango', desc: 'Обязательный реген HP' });
       if (hasSpammers) {
-        startItems.push({ name: 'Magic Stick', desc: 'Против спама способностей врага на линии' });
+        startItems.push({ name: 'Magic Stick', desc: 'Против спама способностей врага' });
       }
       if (myHero.primary_attr === 'str') {
-        startItems.push({ name: 'Gauntlets of Strength', desc: 'Плотность и урон для ластхита' }, { name: 'Circlet', desc: 'Статы' });
+        startItems.push({ name: 'Gauntlets of Strength', desc: 'Плотность и урон' }, { name: 'Circlet', desc: 'Статы' });
       } else if (myHero.primary_attr === 'agi') {
         startItems.push({ name: 'Slippers of Agility', desc: 'Ловкость и броня' }, { name: 'Quelling Blade (Топорик)', desc: 'Стабильный ластхит' });
       } else {
-        startItems.push({ name: 'Circlet / Iron Branch', desc: 'Урон и мана' }, { name: 'Blood Grenade', desc: 'Килл-потенциал на 1–2 уровне' });
+        startItems.push({ name: 'Circlet / Iron Branch', desc: 'Урон и мана' }, { name: 'Blood Grenade', desc: 'Килл-потенциал 1–2 ур.' });
       }
 
-      // Тайминги ключевых артефактов
       const coreTimings = [];
-      if (myHeroSlotIdx === 0) { // Керри
+      if (myHeroSlotIdx === 0) {
         coreTimings.push({ item: 'Power Treads / Phase Boots', time: '4–6 мин', note: 'Мобильность и статы' });
-        coreTimings.push({ item: 'Maelstrom / Battle Fury / Diffusal', time: '11–14 мин', note: 'Ключевой артефакт фарма / урона' });
-        coreTimings.push({ item: 'Black King Bar (BKB)', time: '19–23 мин', note: hasMagicBurst ? 'КРИТИЧНО против их магии' : 'Для безопасных тимфайтов' });
-      } else if (myHeroSlotIdx === 1) { // Мид
+        coreTimings.push({ item: 'Maelstrom / Battle Fury / Diffusal', time: '11–14 мин', note: 'Ключевой артефакт фарма' });
+        coreTimings.push({ item: 'Black King Bar (BKB)', time: '19–23 мин', note: hasMagicBurst ? 'КРИТИЧНО против магии врагов' : 'Для безопасных тимфайтов' });
+      } else if (myHeroSlotIdx === 1) {
         coreTimings.push({ item: 'Bottle & Boots of Speed', time: '2–3 мин', note: 'Контроль рун' });
         coreTimings.push({ item: 'Blink Dagger / Orchid / Witch Blade', time: '10–13 мин', note: 'Тайминг гангов боковых линий' });
         coreTimings.push({ item: 'BKB / Linken Sphere', time: '18–22 мин', note: 'Выживание' });
-      } else if (myHeroSlotIdx === 2) { // Хард
-        coreTimings.push({ item: 'Vanguard / Veil / Phase', time: '5–7 мин', note: 'Доминация на линии' });
+      } else if (myHeroSlotIdx === 2) {
+        coreTimings.push({ item: 'Vanguard / Veil / Phase Boots', time: '5–7 мин', note: 'Доминация на линии' });
         coreTimings.push({ item: 'Blink Dagger / Pipe of Insight', time: '12–15 мин', note: hasMagicBurst ? 'Pipe обязателен команде' : 'Инициация драк' });
-      } else { // Саппорты
+      } else {
         coreTimings.push({ item: 'Arcane Boots / Tranquil', time: '6–8 мин', note: 'Ресурсы для команды' });
         coreTimings.push({ item: 'Glimmer Cape / Force Staff', time: '14–17 мин', note: 'Сейв керри от фокуса' });
       }
@@ -534,33 +541,48 @@
       const dptHeroUrl = `https://dota2protracker.com/hero/${encodeURIComponent(myHero.localized_name)}`;
       const dotabuffHeroUrl = `https://www.dotabuff.com/heroes/${myHero.name.replace('npc_dota_hero_', '')}`;
 
+      // Создаем опции для выпадающего селектора
+      const radHeroOptions = draft.rad
+        .map((id, idx) => {
+          if (!id) return '';
+          const h = heroesById[id];
+          return `<option value="${idx}" ${idx === myHeroSlotIdx ? 'selected' : ''}>${rolesNames[idx]}: ${h.localized_name}</option>`;
+        })
+        .join('');
+
       section.innerHTML = `
-        <div class="bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border-2 border-amber-500/70 rounded-3xl p-6 shadow-2xl">
+        <div class="bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border-2 border-amber-500/80 rounded-3xl p-5 md:p-6 shadow-2xl">
           
           <!-- Шапка профиля -->
-          <div class="flex flex-wrap justify-between items-start gap-4 pb-6 border-b border-slate-800">
+          <div class="flex flex-wrap justify-between items-center gap-4 pb-6 border-b border-slate-800">
             <div class="flex items-center gap-4">
               <img src="${getHeroImage(myHero)}" class="w-20 md:w-24 aspect-[16/9] object-cover rounded-2xl border-2 border-amber-400 shadow-lg">
               <div>
                 <div class="flex items-center gap-2">
-                  <span class="px-2 py-0.5 rounded bg-amber-400/20 text-amber-300 font-extrabold text-[11px] uppercase tracking-wide">Твой выбор</span>
+                  <span class="px-2 py-0.5 rounded bg-amber-400/20 text-amber-300 font-extrabold text-[11px] uppercase tracking-wide">Твой герой</span>
                   <span class="text-xs text-slate-400">${myRole}</span>
                 </div>
                 <h2 class="text-2xl md:text-3xl font-black text-white mt-0.5">${myHero.localized_name}</h2>
                 <div class="text-xs text-slate-400 mt-1">
-                  Линия против: <span class="text-red-300 font-semibold">${laneEnemies.map(e => e.localized_name).join(' + ') || 'враги ещё не выбраны'}</span>
+                  Прямой оппонент на линии: <span class="text-red-300 font-semibold">${laneEnemies.map(e => e.localized_name).join(' + ') || 'враги ещё не выбраны'}</span>
                 </div>
               </div>
             </div>
 
-            <!-- Ссылки на про-статистику -->
-            <div class="flex gap-2">
+            <!-- Селектор переключения героя и ссылки -->
+            <div class="flex flex-wrap items-center gap-2">
+              <div class="flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700">
+                <span class="text-xs text-amber-400 font-bold">Сменить:</span>
+                <select onchange="setMyHero(Number(this.value))" class="bg-transparent text-xs text-white font-bold outline-none cursor-pointer">
+                  ${radHeroOptions}
+                </select>
+              </div>
               <a href="${dptHeroUrl}" target="_blank" rel="noopener" 
                  class="px-3 py-2 bg-sky-950 hover:bg-sky-800 text-sky-300 border border-sky-700/60 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
-                <span>⚡</span> DotaProTracker
+                <span>⚡</span> ProTracker
               </a>
               <a href="${dotabuffHeroUrl}" target="_blank" rel="noopener" 
-                 class="px-3 py-2 bg-red-950 hover:bg-red-800 text-red-300 border border-red-700/60 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
+                 class="px-3 py-2 bg-red-950 hover:bg-red-800 text-red-300 border border-red-700/60 rounded-xl text-xs font-bold transition">
                 Dotabuff
               </a>
             </div>
@@ -569,32 +591,32 @@
           <!-- Сетка стратегии -->
           <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
             
-            <!-- 1. Стартовый закуп под линию -->
+            <!-- 1. Стартовый закуп -->
             <div class="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-4">
               <div class="text-xs font-bold text-amber-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                <span>🎒</span> Адаптивный стартовый закуп (600g)
+                <span>🎒</span> Адаптивный закуп (600g)
               </div>
               <div class="space-y-2">
                 ${startItems.map(item => `
-                  <div class="flex justify-between items-center bg-slate-900/80 p-2.5 rounded-xl border border-slate-700/40 text-xs">
+                  <div class="flex justify-between items-center bg-slate-900/80 p-2 rounded-xl border border-slate-700/40 text-xs">
                     <span class="font-bold text-white">${item.name}</span>
                     <span class="text-[11px] text-slate-400 text-right">${item.desc}</span>
                   </div>
                 `).join('')}
               </div>
               <div class="text-[11px] text-slate-400 mt-3 italic">
-                * Закуп скорректирован с учётом наличия спамеров способностей в пике врага.
+                * Учитывает наличие спамеров и прокастеров в пике врага.
               </div>
             </div>
 
-            <!-- 2. Прокачка и тайминги -->
+            <!-- 2. Тайминги предметов -->
             <div class="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-4">
               <div class="text-xs font-bold text-sky-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                <span>⏱️</span> Тайминги и приоритеты предметов
+                <span>⏱️</span> Тайминги артефактов
               </div>
               <div class="space-y-2">
                 ${coreTimings.map(t => `
-                  <div class="bg-slate-900/80 p-2.5 rounded-xl border border-slate-700/40 text-xs">
+                  <div class="bg-slate-900/80 p-2 rounded-xl border border-slate-700/40 text-xs">
                     <div class="flex justify-between font-bold">
                       <span class="text-slate-200">${t.item}</span>
                       <span class="text-amber-400">${t.time}</span>
@@ -605,19 +627,19 @@
               </div>
             </div>
 
-            <!-- 3. План на игру и фокус -->
+            <!-- 3. Тактический план -->
             <div class="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-4">
               <div class="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                <span>🎯</span> Тактический план и фокус
+                <span>🎯</span> План на игру
               </div>
               <div class="space-y-3 text-xs text-slate-300">
                 <div class="bg-slate-900/80 p-2.5 rounded-xl border border-slate-700/40">
-                  <b class="text-white block mb-0.5">Первые 7 минут (Лайнинг):</b>
-                  Контролируйте Лотусы (каждые 3 мин) и мудрость (7 мин). Не идите на размен HP, если у врага преимущество по ресурсам.
+                  <b class="text-white block mb-0.5">Первые 7 минут:</b>
+                  Контролируйте Лотус-пулы (3:00, 6:00). Не лезьте под вышку без численного преимущества.
                 </div>
                 <div class="bg-slate-900/80 p-2.5 rounded-xl border border-slate-700/40">
-                  <b class="text-white block mb-0.5">Приоритет в драках:</b>
-                  ${enemies.length > 0 ? `Фокусируйте тонких саппортов врага, избегайте траты ключевых кнопок в инициаторов вроде Axe/Centaur.` : 'Дождитесь выбора врагов для точного плана.'}
+                  <b class="text-white block mb-0.5">Фокус в тимфайтах:</b>
+                  ${enemies.length > 0 ? `Фокусируйте тонких саппортов (${enemies.slice(-2).map(e => e.localized_name).join(', ')}), не тратьте кнопки в танков.` : 'Дождитесь выбора врагов для точной цели.'}
                 </div>
               </div>
             </div>
