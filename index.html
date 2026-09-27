@@ -1,1223 +1,448 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dota 2 Draft Analyzer & Lane Coach | 7.37d Pro Meta</title>
-
-  <!-- Tailwind CSS CDN -->
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dota 2 Live Counterpick Engine · OpenDota API</title>
   <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- Google Fonts: Inter & Cinzel -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
-
-  <!-- Lucide Icons CDN -->
-  <script src="https://unpkg.com/lucide@latest"></script>
-
-  <!-- Tailwind Theme Configuration -->
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', 'sans-serif'],
-            cinzel: ['Cinzel', 'serif'],
-            mono: ['JetBrains Mono', 'monospace'],
-          },
-          colors: {
-            dota: {
-              bg: '#06080d',
-              panel: '#0c111a',
-              card: '#101724',
-              border: '#1b2537',
-              radiant: '#00f2fe',
-              dire: '#ff3344',
-              gold: '#cda651',
-              str: '#ec3d23',
-              agi: '#26e070',
-              int: '#00d0ff',
-              uni: '#b854ec',
-            }
-          }
-        }
-      }
-    }
-  </script>
-
   <style>
-    /* Custom Scrollbars */
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #06080d; }
-    ::-webkit-scrollbar-thumb { background: #1c273a; border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: #cda651; }
-
-    .cinzel-title {
-      font-family: 'Cinzel', serif;
-      letter-spacing: 0.05em;
-    }
-
-    .hero-grid-item {
-      transition: all 0.15s ease-out;
-    }
-    .hero-grid-item:hover {
-      transform: translateY(-3px) scale(1.05);
-      z-index: 10;
-      box-shadow: 0 10px 20px -5px rgba(0,0,0,0.8);
-    }
-
-    .slot-pulsing-target {
-      outline: 2px solid #cda651 !important;
-      box-shadow: 0 0 16px rgba(205, 166, 81, 0.6) !important;
-    }
-
-    .line-indicator-radiant {
-      box-shadow: 0 0 14px rgba(0, 242, 254, 0.4);
-    }
-    .line-indicator-dire {
-      box-shadow: 0 0 14px rgba(255, 51, 68, 0.4);
-    }
+    body { background-color: #080a0f; color: #f1f5f9; font-family: system-ui, -apple-system, sans-serif; }
+    .hero-btn { transition: transform 0.15s ease, border-color 0.15s ease; }
+    .hero-btn:hover { transform: translateY(-2px); }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
   </style>
 </head>
+<body class="p-4 md:p-8 min-h-screen flex flex-col">
 
-<body class="bg-[#06080d] text-slate-100 min-h-screen flex flex-col font-sans selection:bg-amber-500 selection:text-black">
-
-  <header class="sticky top-0 z-40 bg-[#06080d]/95 backdrop-blur-md border-b border-[#182335]">
-    <div class="max-w-[1720px] mx-auto px-4 lg:px-8 h-16 flex items-center justify-between">
-      
-      <!-- Brand & Version Indicator -->
-      <div class="flex items-center space-x-3 cursor-pointer" onclick="window.scrollTo({top: 0, behavior: 'smooth'})">
-        <div class="w-10 h-10 rounded-lg bg-gradient-to-tr from-red-600 via-amber-500 to-cyan-400 p-[1.5px] shadow-lg shadow-amber-950/30">
-          <div class="w-full h-full bg-[#0a0f19] rounded-[7px] flex items-center justify-center font-cinzel font-black text-amber-400 text-sm">
-            D2
-          </div>
-        </div>
-        <div>
-          <div class="font-cinzel font-extrabold text-base text-white tracking-wider flex items-center gap-2">
-            DOTA 2 <span class="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-amber-200">DRAFT & LANE COACH</span>
-          </div>
-          <div class="text-[10px] font-mono text-slate-400 tracking-wider flex items-center gap-1.5 -mt-0.5">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-            DOTA PRO TRACKER 8500+ MMR • ПАТЧ 7.37d
-          </div>
-        </div>
-      </div>
-
-      <!-- Controls -->
-      <div class="flex items-center space-x-3">
-        <!-- Open Picker Modal directly -->
-        <button onclick="openHeroModalFromHeader()" class="px-3.5 py-1.5 rounded-lg border border-amber-500/40 bg-amber-950/20 hover:bg-amber-900/40 text-amber-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition">
-          <i data-lucide="layers" class="w-3.5 h-3.5 text-amber-400"></i>
-          <span>Сетка героев</span>
-        </button>
-
-        <!-- Reset All Button -->
-        <button onclick="clearFullDraft()" class="px-3.5 py-1.5 rounded-lg border border-rose-800/60 bg-rose-950/30 hover:bg-rose-900/50 text-rose-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition shadow-sm">
-          <i data-lucide="trash-2" class="w-3.5 h-3.5 text-rose-400"></i>
-          <span>Очистить все пики</span>
-        </button>
-      </div>
-
+  <!-- Шапка -->
+  <header class="max-w-6xl mx-auto w-full flex flex-wrap justify-between items-center gap-4 mb-6 pb-4 border-b border-slate-800">
+    <div>
+      <div class="text-[11px] font-extrabold tracking-widest text-sky-400 uppercase">Dota 2 Real-Time Matchups</div>
+      <h1 class="text-2xl md:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-sky-300 to-red-400">
+        LIVE DRAFT & COUNTERPICK
+      </h1>
+      <p class="text-xs text-slate-400 mt-1 flex items-center gap-2">
+        <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        Подключено напрямую к API OpenDota (реальная статистика матчей)
+      </p>
+    </div>
+    <div class="flex gap-2">
+      <button onclick="clearAll()" class="px-4 py-2 bg-slate-800 hover:bg-red-950 text-slate-300 hover:text-red-300 border border-slate-700 hover:border-red-700/60 rounded-xl text-xs font-bold transition">
+        Очистить все пики
+      </button>
     </div>
   </header>
 
-  <main class="flex-grow max-w-[1720px] w-full mx-auto px-3 sm:px-6 lg:px-8 py-5 space-y-6">
+  <!-- Шкала вероятности победы линии -->
+  <div class="max-w-5xl mx-auto w-full mb-8 bg-slate-900/90 border border-slate-800/80 p-4 rounded-2xl shadow-xl">
+    <div class="flex justify-between items-center text-xs md:text-sm font-black mb-2">
+      <span class="text-emerald-400 flex items-center gap-1.5" id="rad-label">
+        СИЛЫ СВЕТА (RADIANT): 50.0%
+      </span>
+      <span class="text-slate-500 font-normal text-[11px]" id="status-hint">Выберите врагов для расчета</span>
+      <span class="text-red-400 flex items-center gap-1.5" id="dire-label">
+        50.0% :СИЛЫ ТЬМЫ (DIRE)
+      </span>
+    </div>
+    <div class="w-full h-3.5 bg-red-950/80 rounded-full overflow-hidden flex p-0.5 border border-slate-800">
+      <div id="prob-bar" class="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500" style="width: 50%;"></div>
+    </div>
+  </div>
 
-    <!-- Lane Focus Selector & Live Calculated Winrate Meter -->
-    <section class="bg-[#0b101c] border border-[#1b2537] rounded-xl p-4 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
+  <!-- Команды 5x5 -->
+  <div class="max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+    
+    <!-- Radiant -->
+    <div class="bg-slate-900/50 border border-emerald-900/30 rounded-2xl p-4">
+      <div class="flex justify-between items-center mb-3">
+        <h2 class="text-sm font-black text-emerald-400 tracking-wider">СИЛЫ СВЕТА (RADIANT)</h2>
+        <span class="text-[11px] text-slate-500">Твоя команда</span>
+      </div>
+      <div class="grid grid-cols-5 gap-2" id="rad-slots"></div>
+    </div>
+
+    <!-- Dire -->
+    <div class="bg-slate-900/50 border border-red-900/30 rounded-2xl p-4">
+      <div class="flex justify-between items-center mb-3">
+        <h2 class="text-sm font-black text-red-400 tracking-wider">СИЛЫ ТЬМЫ (DIRE)</h2>
+        <span class="text-[11px] text-slate-500">Команда врага</span>
+      </div>
+      <div class="grid grid-cols-5 gap-2" id="dire-slots"></div>
+    </div>
+
+  </div>
+
+  <!-- Блоки рекомендаций OpenDota -->
+  <div class="max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+    
+    <!-- Лучшие пики -->
+    <div class="bg-emerald-950/20 border border-emerald-800/40 rounded-2xl p-5 shadow-lg">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-sm font-black text-emerald-400 flex items-center gap-2">
+          <span>🔥</span> ТОП КОНТРПИКИ (ЖИВОЙ ВИНРЕЙТ)
+        </h3>
+        <span class="text-[10px] text-slate-500 uppercase font-bold" id="rec-status">Ожидание выбора</span>
+      </div>
+      <div id="rec-container" class="space-y-2.5">
+        <div class="p-4 rounded-xl border border-dashed border-slate-800 text-center text-xs text-slate-500">
+          Кликните по слотам врагов и выберите героев. Браузер сам скачает реальную статистику матчапов из OpenDota.
+        </div>
+      </div>
+    </div>
+
+    <!-- Худшие пики -->
+    <div class="bg-red-950/20 border border-red-800/40 rounded-2xl p-5 shadow-lg">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-sm font-black text-red-400 flex items-center gap-2">
+          <span>☠️</span> НЕ БРАТЬ (СЛАБЫЙ МАТЧАП)
+        </h3>
+        <span class="text-[10px] text-slate-500 uppercase font-bold">Риск поражения</span>
+      </div>
+      <div id="worst-container" class="space-y-2.5">
+        <div class="p-4 rounded-xl border border-dashed border-slate-800 text-center text-xs text-slate-500">
+          Здесь появятся герои с наименьшим процентом побед против текущего пика соперников.
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Модальное окно выбора героев -->
+  <div id="hero-modal" class="fixed inset-0 bg-black/85 backdrop-blur-md hidden items-center justify-center p-3 md:p-6 z-50">
+    <div class="bg-slate-900 border border-slate-700/80 w-full max-w-5xl max-h-[90vh] rounded-3xl p-5 md:p-6 flex flex-col shadow-2xl">
       
-      <!-- Lane Buttons -->
-      <div class="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
-        <span class="text-xs font-mono uppercase text-slate-400 font-bold whitespace-nowrap mr-1 flex items-center gap-1.5">
-          <i data-lucide="swords" class="w-4 h-4 text-amber-400"></i> Линия:
-        </span>
-        <button id="lane-btn-safe" onclick="setLaneFocus('safe')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase transition bg-gradient-to-r from-amber-600 to-amber-500 text-white shadow-md whitespace-nowrap">
-          Лёгкая (Поз. 1+5 vs 3+4)
-        </button>
-        <button id="lane-btn-mid" onclick="setLaneFocus('mid')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase transition text-slate-400 hover:text-white whitespace-nowrap">
-          Центр (1v1 Мид)
-        </button>
-        <button id="lane-btn-off" onclick="setLaneFocus('off')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase transition text-slate-400 hover:text-white whitespace-nowrap">
-          Сложная (Поз. 3+4 vs 1+5)
-        </button>
-        <button id="lane-btn-all" onclick="setLaneFocus('all')" class="px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase transition text-slate-400 hover:text-white whitespace-nowrap">
-          Весь драфт (5v5)
-        </button>
-      </div>
-
-      <!-- Live Dynamic Winrate Meter -->
-      <div class="w-full md:w-[480px] flex flex-col space-y-1.5 bg-[#070b13] border border-slate-800 p-3 rounded-lg shadow-inner">
-        <div class="flex justify-between items-center text-xs font-mono font-bold">
-          <span class="text-cyan-400 flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full bg-cyan-400"></span> СВЕТ: <span id="radiant-winrate-text">50.0%</span>
-          </span>
-          <span id="lane-advantage-tag" class="text-[11px] px-2.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800 font-sans font-medium">
-            Ожидание пиков на линии...
-          </span>
-          <span class="text-red-400 flex items-center gap-1.5">
-            ТЬМА: <span id="dire-winrate-text">50.0%</span> <span class="w-2 h-2 rounded-full bg-red-400"></span>
-          </span>
-        </div>
-
-        <div class="w-full h-3 bg-slate-900 rounded-full overflow-hidden flex shadow-inner">
-          <div id="radiant-meter-bar" class="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-300" style="width: 50%;"></div>
-          <div id="dire-meter-bar" class="h-full bg-gradient-to-r from-rose-600 to-red-500 transition-all duration-300" style="width: 50%;"></div>
-        </div>
-      </div>
-
-    </section>
-
-    <!-- 5v5 Draft Arena: Radiant (Left) vs Dire (Right) -->
-    <section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      
-      <!-- Radiant Team (Свет) -->
-      <div class="bg-gradient-to-b from-[#0a1422] to-[#070c14] border border-cyan-900/50 rounded-xl p-4 shadow-xl">
-        <div class="flex items-center justify-between pb-3 mb-3 border-b border-cyan-950">
-          <div class="flex items-center space-x-2">
-            <span class="w-3 h-3 rounded-full bg-cyan-400 shadow-sm shadow-cyan-400"></span>
-            <h2 class="font-cinzel font-bold text-sm sm:text-base text-cyan-300 tracking-wider">КОМАНДА СВЕТА (RADIANT)</h2>
-          </div>
-          <span class="text-[11px] font-mono text-cyan-400/80 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/40">
-            Ваша сторона
-          </span>
-        </div>
-
-        <!-- Radiant 5 Slots -->
-        <div class="grid grid-cols-5 gap-2" id="radiant-slots-container">
-          <!-- Rendered dynamically -->
-        </div>
-      </div>
-
-      <!-- Dire Team (Тьма) -->
-      <div class="bg-gradient-to-b from-[#1b0d13] to-[#0d070b] border border-red-900/50 rounded-xl p-4 shadow-xl">
-        <div class="flex items-center justify-between pb-3 mb-3 border-b border-red-950">
-          <div class="flex items-center space-x-2">
-            <span class="w-3 h-3 rounded-full bg-red-500 shadow-sm shadow-red-500"></span>
-            <h2 class="font-cinzel font-bold text-sm sm:text-base text-red-400 tracking-wider">КОМАНДА ТЬМЫ (DIRE)</h2>
-          </div>
-          <span class="text-[11px] font-mono text-red-400/80 bg-red-950/60 px-2 py-0.5 rounded border border-red-800/40">
-            Противники
-          </span>
-        </div>
-
-        <!-- Dire 5 Slots -->
-        <div class="grid grid-cols-5 gap-2" id="dire-slots-container">
-          <!-- Rendered dynamically -->
-        </div>
-      </div>
-
-    </section>
-
-    <!-- Tactical Recommendations & Dota Pro Tracker Panels -->
-    <section class="grid grid-cols-1 lg:grid-cols-12 gap-5">
-      
-      <!-- Green Zone: Who to pick -->
-      <div class="lg:col-span-4 bg-[#0a121d] border border-emerald-900/40 rounded-xl p-4 shadow-xl flex flex-col justify-between">
+      <div class="flex justify-between items-center mb-4">
         <div>
-          <div class="flex items-center justify-between pb-3 mb-3 border-b border-emerald-950">
-            <div class="flex items-center space-x-2">
-              <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i>
-              <h3 class="font-cinzel font-bold text-sm text-emerald-300">ЗЕЛЁНАЯ ЗОНА: КОГО БРАТЬ</h3>
-            </div>
-            <span class="text-[10px] font-mono bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-800">
-              КОНТРПИКИ
-            </span>
-          </div>
-
-          <div id="green-zone-list" class="space-y-2.5">
-            <!-- Dynamic Green Picks -->
-          </div>
+          <h3 class="text-lg font-black text-white" id="modal-title">Выберите героя</h3>
+          <p class="text-xs text-slate-400">Кликните на персонажа для добавления в выбранный слот</p>
         </div>
+        <button onclick="closeModal()" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center text-lg">&times;</button>
+      </div>
 
-        <div class="text-[11px] font-mono text-slate-400 pt-3 mt-3 border-t border-slate-800/60 flex items-center justify-between">
-          <span>Нажмите «+ Взять», чтобы поставить героя в слот</span>
+      <!-- Поиск и фильтры -->
+      <div class="flex flex-wrap gap-2 mb-4">
+        <input type="text" id="hero-search" placeholder="Поиск по имени героя..." oninput="filterHeroesGrid()"
+               class="flex-1 min-w-[200px] bg-slate-800/90 border border-slate-700 rounded-xl px-4 py-2.5 text-xs md:text-sm text-white focus:outline-none focus:border-sky-500">
+        <div class="flex gap-1 bg-slate-800/60 p-1 rounded-xl border border-slate-700/60 text-xs">
+          <button onclick="setAttrFilter('all')" class="attr-btn px-3 py-1.5 rounded-lg font-bold bg-sky-500 text-white" data-attr="all">Все</button>
+          <button onclick="setAttrFilter('str')" class="attr-btn px-3 py-1.5 rounded-lg font-bold text-slate-400 hover:text-white" data-attr="str">Сила</button>
+          <button onclick="setAttrFilter('agi')" class="attr-btn px-3 py-1.5 rounded-lg font-bold text-slate-400 hover:text-white" data-attr="agi">Ловкость</button>
+          <button onclick="setAttrFilter('int')" class="attr-btn px-3 py-1.5 rounded-lg font-bold text-slate-400 hover:text-white" data-attr="int">Интеллект</button>
+          <button onclick="setAttrFilter('all_attr')" class="attr-btn px-3 py-1.5 rounded-lg font-bold text-slate-400 hover:text-white" data-attr="all_attr">Универсал</button>
         </div>
       </div>
 
-      <!-- Red Zone: Whom NOT to pick -->
-      <div class="lg:col-span-4 bg-[#160c11] border border-rose-900/40 rounded-xl p-4 shadow-xl flex flex-col justify-between">
-        <div>
-          <div class="flex items-center justify-between pb-3 mb-3 border-b border-rose-950">
-            <div class="flex items-center space-x-2">
-              <i data-lucide="alert-octagon" class="w-4 h-4 text-rose-500"></i>
-              <h3 class="font-cinzel font-bold text-sm text-rose-300">КРАСНАЯ ЗОНА: НЕ БРАТЬ</h3>
-            </div>
-            <span class="text-[10px] font-mono bg-rose-950 text-rose-300 px-2 py-0.5 rounded border border-rose-800">
-              ПРОВАЛ ЛИНИИ
-            </span>
-          </div>
-
-          <div id="red-zone-list" class="space-y-2.5">
-            <!-- Dynamic Red Picks -->
-          </div>
-        </div>
-
-        <div class="text-[11px] font-mono text-slate-400 pt-3 mt-3 border-t border-slate-800/60">
-          <span>Герои, отдающие лайн текущим пикам врага</span>
-        </div>
-      </div>
-
-      <!-- Dota Pro Tracker & Tactical Lane Coach Panel -->
-      <div class="lg:col-span-4 bg-[#0a0e17] border border-amber-900/30 rounded-xl p-4 shadow-xl space-y-4">
-        
-        <!-- Active Hero Meta Banner -->
-        <div class="flex items-center justify-between pb-2 border-b border-slate-800">
-          <div class="flex items-center space-x-3">
-            <div id="meta-hero-portrait-wrapper" class="w-11 h-11 rounded-lg overflow-hidden border border-amber-500/50 bg-slate-900 flex items-center justify-center">
-              <span class="font-cinzel text-xs text-slate-600 font-bold">D2</span>
-            </div>
-            <div>
-              <div class="flex items-center gap-1.5">
-                <span id="meta-hero-name" class="font-cinzel font-bold text-sm text-amber-300">Герой не выбран</span>
-                <span id="meta-hero-role" class="text-[10px] font-mono bg-slate-800 text-slate-400 px-1.5 py-0.2 rounded">Позиция</span>
-              </div>
-              <div class="text-[11px] text-slate-400 font-mono">
-                DPT Винрейт: <b id="meta-hero-wr" class="text-slate-300">--%</b> <span id="meta-hero-matches" class="text-[10px] text-slate-500">(-- матчей)</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Direct Link to Dota Pro Tracker -->
-          <a id="meta-hero-dpt-link" href="https://dota2protracker.com" target="_blank" class="p-2 rounded-lg bg-slate-800 hover:bg-amber-500 hover:text-black text-amber-400 transition" title="Открыть на DotaProTracker">
-            <i data-lucide="external-link" class="w-4 h-4"></i>
-          </a>
-        </div>
-
-        <!-- Starting Items for Lane -->
-        <div>
-          <span class="text-[11px] font-mono text-slate-400 uppercase font-semibold flex items-center gap-1 mb-1.5">
-            <i data-lucide="shopping-bag" class="w-3 h-3 text-amber-400"></i> Стартовый закуп на линию (600 золота):
-          </span>
-          <div id="meta-starting-items" class="flex flex-wrap gap-1.5">
-            <span class="text-xs text-slate-500 italic">Выберите героя для отображения закупа</span>
-          </div>
-        </div>
-
-        <!-- Key Item Timings -->
-        <div>
-          <span class="text-[11px] font-mono text-slate-400 uppercase font-semibold flex items-center gap-1 mb-1.5">
-            <i data-lucide="clock" class="w-3 h-3 text-amber-400"></i> Тайминги артефактов (DPT High MMR):
-          </span>
-          <div id="meta-key-items" class="grid grid-cols-3 gap-1.5 text-center font-mono">
-            <div class="bg-slate-900/90 border border-slate-800 p-1.5 rounded text-xs text-slate-500">Слот 1</div>
-            <div class="bg-slate-900/90 border border-slate-800 p-1.5 rounded text-xs text-slate-500">Слот 2</div>
-            <div class="bg-slate-900/90 border border-slate-800 p-1.5 rounded text-xs text-slate-500">Слот 3</div>
-          </div>
-        </div>
-
-        <!-- Tactical Blueprint on Lane -->
-        <div class="p-3 bg-[#0e1423] border border-cyan-900/40 rounded-lg">
-          <div class="text-[11px] font-mono text-cyan-300 font-bold mb-1 flex items-center gap-1.5">
-            <i data-lucide="sparkles" class="w-3.5 h-3.5 text-cyan-400"></i> Инструкция на первые 5 минут:
-          </div>
-          <p id="ai-tactical-blueprint" class="text-xs text-slate-300 leading-relaxed font-sans">
-            Выберите героев на выбранную линию для получения инструкций по переагру крипов, контролю лотусов и рун.
-          </p>
-        </div>
-
-      </div>
-
-    </section>
-
-  </main>
-
-  <!-- Authentic Dota 2 Hero Picker Modal (4 Attribute Columns) -->
-  <div id="heroPickerModal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex items-center justify-center p-2 sm:p-4">
-    <div class="bg-[#0b101c] border border-slate-700/80 w-full max-w-[1400px] h-[92vh] rounded-2xl p-4 sm:p-6 shadow-2xl flex flex-col space-y-4 relative">
-      
-      <!-- Modal Header -->
-      <div class="flex flex-col sm:flex-row items-center justify-between gap-3 pb-3 border-b border-slate-800 flex-shrink-0">
-        <div class="flex items-center space-x-3 w-full sm:w-auto">
-          <span class="font-cinzel font-bold text-lg text-white">ВЫБОР ГЕРОЯ</span>
-          <span class="text-slate-500">•</span>
-          <div class="text-xs font-mono text-slate-300">
-            СЛОТ: <b id="modal-target-badge" class="text-amber-400 bg-amber-950/70 border border-amber-700/80 px-2 py-0.5 rounded">СВЕТ: Керри (Поз. 1)</b>
-          </div>
-        </div>
-
-        <!-- Search Bar and Filter -->
-        <div class="flex items-center gap-3 w-full sm:w-auto">
-          <div class="relative w-full sm:w-72">
-            <input id="modal-hero-search" oninput="filterHeroesGrid()" type="text" placeholder="Поиск (рус / eng)..." class="w-full bg-[#06080d] border border-slate-700 rounded-lg px-3 py-1.5 pl-8 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400">
-            <i data-lucide="search" class="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5"></i>
-          </div>
-
-          <button onclick="closeHeroModal()" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition">
-            <i data-lucide="x" class="w-5 h-5"></i>
-          </button>
-        </div>
-      </div>
-
-      <!-- 4 Columns Hero Grid: Strength, Agility, Intelligence, Universal -->
-      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 flex-grow overflow-hidden">
-        
-        <!-- Strength (Сила) -->
-        <div class="bg-[#070b13] border border-red-950/70 rounded-xl p-2.5 flex flex-col min-h-0">
-          <div class="flex items-center space-x-2 pb-2 mb-2 border-b border-red-900/40 flex-shrink-0">
-            <div class="w-4 h-4 rounded-full bg-red-600 flex items-center justify-center font-bold text-[9px] text-white">S</div>
-            <h4 class="font-cinzel font-bold text-xs tracking-wider text-red-400 uppercase">СИЛА (STRENGTH)</h4>
-            <span id="count-str" class="text-[10px] font-mono text-slate-500 ml-auto">0</span>
-          </div>
-          <div id="col-str" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-3 xl:grid-cols-4 gap-1.5 overflow-y-auto pr-1 flex-grow"></div>
-        </div>
-
-        <!-- Agility (Ловкость) -->
-        <div class="bg-[#070b13] border border-emerald-950/70 rounded-xl p-2.5 flex flex-col min-h-0">
-          <div class="flex items-center space-x-2 pb-2 mb-2 border-b border-emerald-900/40 flex-shrink-0">
-            <div class="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center font-bold text-[9px] text-black">A</div>
-            <h4 class="font-cinzel font-bold text-xs tracking-wider text-emerald-400 uppercase">ЛОВКОСТЬ (AGILITY)</h4>
-            <span id="count-agi" class="text-[10px] font-mono text-slate-500 ml-auto">0</span>
-          </div>
-          <div id="col-agi" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-3 xl:grid-cols-4 gap-1.5 overflow-y-auto pr-1 flex-grow"></div>
-        </div>
-
-        <!-- Intelligence (Интеллект) -->
-        <div class="bg-[#070b13] border border-sky-950/70 rounded-xl p-2.5 flex flex-col min-h-0">
-          <div class="flex items-center space-x-2 pb-2 mb-2 border-b border-sky-900/40 flex-shrink-0">
-            <div class="w-4 h-4 rounded-full bg-sky-500 flex items-center justify-center font-bold text-[9px] text-black">I</div>
-            <h4 class="font-cinzel font-bold text-xs tracking-wider text-sky-400 uppercase">ИНТЕЛЛЕКТ (INTELLIGENCE)</h4>
-            <span id="count-int" class="text-[10px] font-mono text-slate-500 ml-auto">0</span>
-          </div>
-          <div id="col-int" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-3 xl:grid-cols-4 gap-1.5 overflow-y-auto pr-1 flex-grow"></div>
-        </div>
-
-        <!-- Universal (Универсальные) -->
-        <div class="bg-[#070b13] border border-purple-950/70 rounded-xl p-2.5 flex flex-col min-h-0">
-          <div class="flex items-center space-x-2 pb-2 mb-2 border-b border-purple-900/40 flex-shrink-0">
-            <div class="w-4 h-4 rounded-full bg-purple-500 flex items-center justify-center font-bold text-[9px] text-white">U</div>
-            <h4 class="font-cinzel font-bold text-xs tracking-wider text-purple-400 uppercase">УНИВЕРСАЛЬНЫЕ (UNIVERSAL)</h4>
-            <span id="count-uni" class="text-[10px] font-mono text-slate-500 ml-auto">0</span>
-          </div>
-          <div id="col-uni" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-3 xl:grid-cols-4 gap-1.5 overflow-y-auto pr-1 flex-grow"></div>
-        </div>
-
-      </div>
+      <!-- Сетка героев -->
+      <div id="modal-grid" class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2 overflow-y-auto pr-1 flex-1"></div>
 
     </div>
   </div>
 
-  <!-- Toast Notification -->
-  <div id="toast" class="fixed bottom-6 right-6 z-50 transform translate-y-24 opacity-0 transition-all duration-300 pointer-events-none">
-    <div class="bg-slate-900 border border-amber-400 text-white px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-3">
-      <i data-lucide="info" class="w-4 h-4 text-amber-400"></i>
-      <span id="toast-text" class="text-xs font-medium font-sans">Оповещение</span>
-    </div>
-  </div>
-
-  <footer class="bg-[#040609] border-t border-[#121927] py-4 text-center text-xs text-slate-500 font-mono">
-    Dota 2 Draft Analyzer & Coach • Мета 7.37d • Все права на Dota 2 принадлежат Valve Corporation.
+  <footer class="mt-auto text-center text-xs text-slate-600 py-4">
+    Данные контрпиков рассчитываются по официальной базе OpenDota API. Все арты и портреты принадлежат Valve Corporation.
   </footer>
 
   <script>
-    // 120+ Dota 2 Heroes master database
-    const HEROES_DB = [
-      // STRENGTH (СИЛА)
-      { id: 'axe', nameRu: 'Axe', nameEn: 'Axe', attr: 'str', roles: ['3'] },
-      { id: 'bristleback', nameRu: 'Bristleback', nameEn: 'Bristleback', attr: 'str', roles: ['1', '3'] },
-      { id: 'centaur', nameRu: 'Centaur Warrunner', nameEn: 'Centaur Warrunner', attr: 'str', roles: ['3'] },
-      { id: 'chaos_knight', nameRu: 'Chaos Knight', nameEn: 'Chaos Knight', attr: 'str', roles: ['1'] },
-      { id: 'dawnbreaker', nameRu: 'Dawnbreaker', nameEn: 'Dawnbreaker', attr: 'str', roles: ['3', '4', '5'] },
-      { id: 'doom_bringer', nameRu: 'Doom', nameEn: 'Doom', attr: 'str', roles: ['3'] },
-      { id: 'dragon_knight', nameRu: 'Dragon Knight', nameEn: 'Dragon Knight', attr: 'str', roles: ['2', '3'] },
-      { id: 'earth_spirit', nameRu: 'Earth Spirit', nameEn: 'Earth Spirit', attr: 'str', roles: ['2', '4'] },
-      { id: 'earthshaker', nameRu: 'Earthshaker', nameEn: 'Earthshaker', attr: 'str', roles: ['2', '4'] },
-      { id: 'elder_titan', nameRu: 'Elder Titan', nameEn: 'Elder Titan', attr: 'str', roles: ['4', '5'] },
-      { id: 'huskar', nameRu: 'Huskar', nameEn: 'Huskar', attr: 'str', roles: ['2'] },
-      { id: 'kunkka', nameRu: 'Kunkka', nameEn: 'Kunkka', attr: 'str', roles: ['2', '3'] },
-      { id: 'legion_commander', nameRu: 'Legion Commander', nameEn: 'Legion Commander', attr: 'str', roles: ['3'] },
-      { id: 'lifestealer', nameRu: 'Lifestealer', nameEn: 'Lifestealer', attr: 'str', roles: ['1'] },
-      { id: 'mars', nameRu: 'Mars', nameEn: 'Mars', attr: 'str', roles: ['3'] },
-      { id: 'night_stalker', nameRu: 'Night Stalker', nameEn: 'Night Stalker', attr: 'str', roles: ['3'] },
-      { id: 'omniknight', nameRu: 'Omniknight', nameEn: 'Omniknight', attr: 'str', roles: ['3', '5'] },
-      { id: 'primal_beast', nameRu: 'Primal Beast', nameEn: 'Primal Beast', attr: 'str', roles: ['2', '3'] },
-      { id: 'pudge', nameRu: 'Pudge', nameEn: 'Pudge', attr: 'str', roles: ['1', '3', '4'] },
-      { id: 'slardar', nameRu: 'Slardar', nameEn: 'Slardar', attr: 'str', roles: ['3'] },
-      { id: 'spirit_breaker', nameRu: 'Spirit Breaker', nameEn: 'Spirit Breaker', attr: 'str', roles: ['3', '4'] },
-      { id: 'sven', nameRu: 'Sven', nameEn: 'Sven', attr: 'str', roles: ['1', '5'] },
-      { id: 'tidehunter', nameRu: 'Tidehunter', nameEn: 'Tidehunter', attr: 'str', roles: ['3'] },
-      { id: 'tiny', nameRu: 'Tiny', nameEn: 'Tiny', attr: 'str', roles: ['2', '4'] },
-      { id: 'treant_protector', nameRu: 'Treant Protector', nameEn: 'Treant Protector', attr: 'str', roles: ['5'] },
-      { id: 'tusk', nameRu: 'Tusk', nameEn: 'Tusk', attr: 'str', roles: ['4'] },
-      { id: 'undying', nameRu: 'Undying', nameEn: 'Undying', attr: 'str', roles: ['5'] },
-      { id: 'wraith_king', nameRu: 'Wraith King', nameEn: 'Wraith King', attr: 'str', roles: ['1', '3'] },
+    const OPENDOTA_API = 'https://api.opendota.com/api';
+    let heroesList = [];
+    let heroesById = {};
+    let matchupsCache = {}; // Кэш, чтобы не запрашивать одного и того же героя дважды
 
-      // AGILITY (ЛОВКОСТЬ)
-      { id: 'antimage', nameRu: 'Anti-Mage', nameEn: 'Anti-Mage', attr: 'agi', roles: ['1'] },
-      { id: 'arc_warden', nameRu: 'Arc Warden', nameEn: 'Arc Warden', attr: 'agi', roles: ['1', '2'] },
-      { id: 'bloodseeker', nameRu: 'Bloodseeker', nameEn: 'Bloodseeker', attr: 'agi', roles: ['1'] },
-      { id: 'bounty_hunter', nameRu: 'Bounty Hunter', nameEn: 'Bounty Hunter', attr: 'agi', roles: ['3', '4'] },
-      { id: 'clinkz', nameRu: 'Clinkz', nameEn: 'Clinkz', attr: 'agi', roles: ['1', '2', '4'] },
-      { id: 'drow_ranger', nameRu: 'Drow Ranger', nameEn: 'Drow Ranger', attr: 'agi', roles: ['1'] },
-      { id: 'ember_spirit', nameRu: 'Ember Spirit', nameEn: 'Ember Spirit', attr: 'agi', roles: ['2'] },
-      { id: 'faceless_void', nameRu: 'Faceless Void', nameEn: 'Faceless Void', attr: 'agi', roles: ['1'] },
-      { id: 'gyrocopter', nameRu: 'Gyrocopter', nameEn: 'Gyrocopter', attr: 'agi', roles: ['1', '4', '5'] },
-      { id: 'hoodwink', nameRu: 'Hoodwink', nameEn: 'Hoodwink', attr: 'agi', roles: ['4'] },
-      { id: 'juggernaut', nameRu: 'Juggernaut', nameEn: 'Juggernaut', attr: 'agi', roles: ['1'] },
-      { id: 'luna', nameRu: 'Luna', nameEn: 'Luna', attr: 'agi', roles: ['1'] },
-      { id: 'medusa', nameRu: 'Medusa', nameEn: 'Medusa', attr: 'agi', roles: ['1', '2'] },
-      { id: 'meepo', nameRu: 'Meepo', nameEn: 'Meepo', attr: 'agi', roles: ['2'] },
-      { id: 'monkey_king', nameRu: 'Monkey King', nameEn: 'Monkey King', attr: 'agi', roles: ['1', '2', '4'] },
-      { id: 'morphling', nameRu: 'Morphling', nameEn: 'Morphling', attr: 'agi', roles: ['1', '2'] },
-      { id: 'naga_siren', nameRu: 'Naga Siren', nameEn: 'Naga Siren', attr: 'agi', roles: ['1'] },
-      { id: 'phantom_assassin', nameRu: 'Phantom Assassin', nameEn: 'Phantom Assassin', attr: 'agi', roles: ['1'] },
-      { id: 'phantom_lancer', nameRu: 'Phantom Lancer', nameEn: 'Phantom Lancer', attr: 'agi', roles: ['1'] },
-      { id: 'razor', nameRu: 'Razor', nameEn: 'Razor', attr: 'agi', roles: ['1', '2', '3'] },
-      { id: 'riki', nameRu: 'Riki', nameEn: 'Riki', attr: 'agi', roles: ['1'] },
-      { id: 'shadow_fiend', nameRu: 'Shadow Fiend', nameEn: 'Shadow Fiend', attr: 'agi', roles: ['1', '2'] },
-      { id: 'slark', nameRu: 'Slark', nameEn: 'Slark', attr: 'agi', roles: ['1'] },
-      { id: 'sniper', nameRu: 'Sniper', nameEn: 'Sniper', attr: 'agi', roles: ['1', '2'] },
-      { id: 'spectre', nameRu: 'Spectre', nameEn: 'Spectre', attr: 'agi', roles: ['1'] },
-      { id: 'templar_assassin', nameRu: 'Templar Assassin', nameEn: 'Templar Assassin', attr: 'agi', roles: ['1', '2'] },
-      { id: 'terrorblade', nameRu: 'Terrorblade', nameEn: 'Terrorblade', attr: 'agi', roles: ['1'] },
-      { id: 'troll_warlord', nameRu: 'Troll Warlord', nameEn: 'Troll Warlord', attr: 'agi', roles: ['1'] },
-      { id: 'ursa', nameRu: 'Ursa', nameEn: 'Ursa', attr: 'agi', roles: ['1'] },
-      { id: 'viper', nameRu: 'Viper', nameEn: 'Viper', attr: 'agi', roles: ['2', '3'] },
-      { id: 'weaver', nameRu: 'Weaver', nameEn: 'Weaver', attr: 'agi', roles: ['1', '4'] },
+    let targetSlot = null; // { team: 'rad' | 'dire', idx: 0..4 }
+    let currentAttr = 'all';
 
-      // INTELLIGENCE (ИНТЕЛЛЕКТ)
-      { id: 'ancient_apparition', nameRu: 'Ancient Apparition', nameEn: 'Ancient Apparition', attr: 'int', roles: ['5'] },
-      { id: 'crystal_maiden', nameRu: 'Crystal Maiden', nameEn: 'Crystal Maiden', attr: 'int', roles: ['5'] },
-      { id: 'disruptor', nameRu: 'Disruptor', nameEn: 'Disruptor', attr: 'int', roles: ['5'] },
-      { id: 'grimstroke', nameRu: 'Grimstroke', nameEn: 'Grimstroke', attr: 'int', roles: ['4', '5'] },
-      { id: 'jakiro', nameRu: 'Jakiro', nameEn: 'Jakiro', attr: 'int', roles: ['5'] },
-      { id: 'keeper_of_the_light', nameRu: 'Keeper of the Light', nameEn: 'Keeper of the Light', attr: 'int', roles: ['2', '4', '5'] },
-      { id: 'leshrac', nameRu: 'Leshrac', nameEn: 'Leshrac', attr: 'int', roles: ['2'] },
-      { id: 'lich', nameRu: 'Lich', nameEn: 'Lich', attr: 'int', roles: ['5'] },
-      { id: 'lina', nameRu: 'Lina', nameEn: 'Lina', attr: 'int', roles: ['1', '2', '4'] },
-      { id: 'lion', nameRu: 'Lion', nameEn: 'Lion', attr: 'int', roles: ['4', '5'] },
-      { id: 'necrophos', nameRu: 'Necrophos', nameEn: 'Necrophos', attr: 'int', roles: ['2', '3'] },
-      { id: 'oracle', nameRu: 'Oracle', nameEn: 'Oracle', attr: 'int', roles: ['5'] },
-      { id: 'outworld_destroyer', nameRu: 'Outworld Destroyer', nameEn: 'Outworld Destroyer', attr: 'int', roles: ['2'] },
-      { id: 'puck', nameRu: 'Puck', nameEn: 'Puck', attr: 'int', roles: ['2'] },
-      { id: 'pugna', nameRu: 'Pugna', nameEn: 'Pugna', attr: 'int', roles: ['2', '4', '5'] },
-      { id: 'queenofpain', nameRu: 'Queen of Pain', nameEn: 'Queen of Pain', attr: 'int', roles: ['2'] },
-      { id: 'rubick', nameRu: 'Rubick', nameEn: 'Rubick', attr: 'int', roles: ['4'] },
-      { id: 'shadow_demon', nameRu: 'Shadow Demon', nameEn: 'Shadow Demon', attr: 'int', roles: ['5'] },
-      { id: 'shadow_shaman', nameRu: 'Shadow Shaman', nameEn: 'Shadow Shaman', attr: 'int', roles: ['4', '5'] },
-      { id: 'silencer', nameRu: 'Silencer', nameEn: 'Silencer', attr: 'int', roles: ['4', '5'] },
-      { id: 'skywrath_mage', nameRu: 'Skywrath Mage', nameEn: 'Skywrath Mage', attr: 'int', roles: ['4', '5'] },
-      { id: 'storm_spirit', nameRu: 'Storm Spirit', nameEn: 'Storm Spirit', attr: 'int', roles: ['2'] },
-      { id: 'tinker', nameRu: 'Tinker', nameEn: 'Tinker', attr: 'int', roles: ['2', '4'] },
-      { id: 'witch_doctor', nameRu: 'Witch Doctor', nameEn: 'Witch Doctor', attr: 'int', roles: ['5'] },
-      { id: 'zuus', nameRu: 'Zeus', nameEn: 'Zeus', attr: 'int', roles: ['2', '4'] },
-
-      // UNIVERSAL (УНИВЕРСАЛЬНЫЕ)
-      { id: 'abaddon', nameRu: 'Abaddon', nameEn: 'Abaddon', attr: 'uni', roles: ['1', '3', '5'] },
-      { id: 'bane', nameRu: 'Bane', nameEn: 'Bane', attr: 'uni', roles: ['5'] },
-      { id: 'batrider', nameRu: 'Batrider', nameEn: 'Batrider', attr: 'uni', roles: ['2', '3', '4'] },
-      { id: 'beastmaster', nameRu: 'Beastmaster', nameEn: 'Beastmaster', attr: 'uni', roles: ['3'] },
-      { id: 'broodmother', nameRu: 'Broodmother', nameEn: 'Broodmother', attr: 'uni', roles: ['2', '3'] },
-      { id: 'chen', nameRu: 'Chen', nameEn: 'Chen', attr: 'uni', roles: ['5'] },
-      { id: 'clockwerk', nameRu: 'Clockwerk', nameEn: 'Clockwerk', attr: 'uni', roles: ['4', '5'] },
-      { id: 'dark_seer', nameRu: 'Dark Seer', nameEn: 'Dark Seer', attr: 'uni', roles: ['3'] },
-      { id: 'dark_willow', nameRu: 'Dark Willow', nameEn: 'Dark Willow', attr: 'uni', roles: ['4', '5'] },
-      { id: 'dazzle', nameRu: 'Dazzle', nameEn: 'Dazzle', attr: 'uni', roles: ['2', '5'] },
-      { id: 'enigma', nameRu: 'Enigma', nameEn: 'Enigma', attr: 'uni', roles: ['3', '4'] },
-      { id: 'invoker', nameRu: 'Invoker', nameEn: 'Invoker', attr: 'uni', roles: ['2'] },
-      { id: 'io', nameRu: 'Io', nameEn: 'Io', attr: 'uni', roles: ['4', '5'] },
-      { id: 'magnataur', nameRu: 'Magnus', nameEn: 'Magnus', attr: 'uni', roles: ['1', '2', '3'] },
-      { id: 'marci', nameRu: 'Marci', nameEn: 'Marci', attr: 'uni', roles: ['1', '4'] },
-      { id: 'mirana', nameRu: 'Mirana', nameEn: 'Mirana', attr: 'uni', roles: ['4', '5'] },
-      { id: 'nyx_assassin', nameRu: 'Nyx Assassin', nameEn: 'Nyx Assassin', attr: 'uni', roles: ['4'] },
-      { id: 'pangolier', nameRu: 'Pangolier', nameEn: 'Pangolier', attr: 'uni', roles: ['2', '3'] },
-      { id: 'phoenix', nameRu: 'Phoenix', nameEn: 'Phoenix', attr: 'uni', roles: ['3', '4', '5'] },
-      { id: 'sand_king', nameRu: 'Sand King', nameEn: 'Sand King', attr: 'uni', roles: ['3'] },
-      { id: 'snapfire', nameRu: 'Snapfire', nameEn: 'Snapfire', attr: 'uni', roles: ['2', '4', '5'] },
-      { id: 'techies', nameRu: 'Techies', nameEn: 'Techies', attr: 'uni', roles: ['4'] },
-      { id: 'timbersaw', nameRu: 'Timbersaw', nameEn: 'Timbersaw', attr: 'uni', roles: ['2', '3'] },
-      { id: 'vengefulspirit', nameRu: 'Vengeful Spirit', nameEn: 'Vengeful Spirit', attr: 'uni', roles: ['4', '5'] },
-      { id: 'venomancer', nameRu: 'Venomancer', nameEn: 'Venomancer', attr: 'uni', roles: ['3', '4', '5'] },
-      { id: 'visage', nameRu: 'Visage', nameEn: 'Visage', attr: 'uni', roles: ['2', '3'] },
-      { id: 'void_spirit', nameRu: 'Void Spirit', nameEn: 'Void Spirit', attr: 'uni', roles: ['2'] },
-      { id: 'windrunner', nameRu: 'Windranger', nameEn: 'Windranger', attr: 'uni', roles: ['1', '2', '4'] },
-      { id: 'winter_wyvern', nameRu: 'Winter Wyvern', nameEn: 'Winter Wyvern', attr: 'uni', roles: ['2', '5'] }
-    ];
-
-    // Helper: find hero by id
-    function findHero(id) {
-      return HEROES_DB.find(h => h.id === id) || null;
-    }
-
-    // High quality Valve official CDN image
-    function getValveHeroImageUrl(heroId) {
-      if (!heroId) return '';
-      return `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${heroId}.png`;
-    }
-
-    // Fail-safe SVG fallback data URI (never broken)
-    function getSvgFallbackDataUri(name, attr) {
-      const color = attr === 'str' ? '#ec3d23' : attr === 'agi' ? '#26e070' : attr === 'int' ? '#00d0ff' : '#b854ec';
-      const initials = (name || 'D2').substring(0, 3).toUpperCase();
-      const svg = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="128" height="160" viewBox="0 0 128 160">
-          <defs>
-            <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stop-color="#0a0f1d"/>
-              <stop offset="100%" stop-color="#141c2c"/>
-            </linearGradient>
-          </defs>
-          <rect width="128" height="160" fill="url(#bg)"/>
-          <circle cx="64" cy="70" r="34" fill="${color}" fill-opacity="0.15" stroke="${color}" stroke-width="2"/>
-          <text x="64" y="78" fill="${color}" font-family="sans-serif" font-weight="900" font-size="22" text-anchor="middle">${initials}</text>
-          <text x="64" y="130" fill="#94a3b8" font-family="sans-serif" font-weight="600" font-size="10" text-anchor="middle">${name.substring(0, 14)}</text>
-        </svg>
-      `;
-      return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-    }
-
-    // Robust image onerror handler
-    function handleImgError(img, heroName, attr) {
-      img.onerror = null; // Prevent loop
-      img.src = getSvgFallbackDataUri(heroName, attr);
-    }
-  </script>
-
-  <script>
-    // 5v5 Draft State - COMPLETELY NULL / EMPTY AT INITIALIZATION
     const draft = {
-      radiant: [
-        { pos: '1', roleRu: 'Керри', heroId: null },
-        { pos: '2', roleRu: 'Мид', heroId: null },
-        { pos: '3', roleRu: 'Хард', heroId: null },
-        { pos: '4', roleRu: 'Семи-сап', heroId: null },
-        { pos: '5', roleRu: 'Фулл-сап', heroId: null }
-      ],
-      dire: [
-        { pos: '1', roleRu: 'Керри', heroId: null },
-        { pos: '2', roleRu: 'Мид', heroId: null },
-        { pos: '3', roleRu: 'Хард', heroId: null },
-        { pos: '4', roleRu: 'Семи-сап', heroId: null },
-        { pos: '5', roleRu: 'Фулл-сап', heroId: null }
-      ]
+      rad: [null, null, null, null, null],
+      dire: [null, null, null, null, null]
     };
 
-    let activeSlotTarget = { team: 'radiant', index: 0 };
-    let currentLaneFocus = 'safe'; // 'safe', 'mid', 'off', 'all'
+    // Загрузка героев с OpenDota
+    async function init() {
+      try {
+        const res = await fetch(`${OPENDOTA_API}/heroes`);
+        if (!res.ok) throw new Error('Ошибка OpenDota');
+        heroesList = await res.json();
+        
+        // Сортировка по алфавиту
+        heroesList.sort((a, b) => a.localized_name.localeCompare(b.localized_name));
+        heroesList.forEach(h => {
+          heroesById[h.id] = h;
+        });
 
-    // Bootstrapping
-    window.addEventListener('DOMContentLoaded', () => {
-      lucide.createIcons();
-      renderDraftBoards();
-      renderHeroPickerModalGrid();
-      updateMatchupsAndWinrate();
-    });
-
-    // Check if slot belongs to active lane focus
-    function isSlotActiveInLane(team, pos) {
-      if (currentLaneFocus === 'all') return true;
-      if (currentLaneFocus === 'mid') return pos === '2';
-      if (currentLaneFocus === 'safe') {
-        return team === 'radiant' ? (pos === '1' || pos === '5') : (pos === '3' || pos === '4');
-      }
-      if (currentLaneFocus === 'off') {
-        return team === 'radiant' ? (pos === '3' || pos === '4') : (pos === '1' || pos === '5');
-      }
-      return true;
-    }
-
-    // Render Draft Boards with individual clear buttons (×)
-    function renderDraftBoards() {
-      const radContainer = document.getElementById('radiant-slots-container');
-      const direContainer = document.getElementById('dire-slots-container');
-
-      radContainer.innerHTML = '';
-      draft.radiant.forEach((slot, idx) => {
-        const hero = findHero(slot.heroId);
-        const isTarget = activeSlotTarget.team === 'radiant' && activeSlotTarget.index === idx;
-        const isLane = isSlotActiveInLane('radiant', slot.pos);
-
-        const card = document.createElement('div');
-        card.className = `rounded-lg border-2 p-1.5 transition-all duration-200 relative flex flex-col items-center bg-[#070b13] cursor-pointer ${
-          isTarget ? 'slot-pulsing-target border-amber-400' : isLane ? 'border-cyan-500/70 line-indicator-radiant' : 'border-slate-800 opacity-80 hover:opacity-100'
-        }`;
-
-        if (hero) {
-          card.innerHTML = `
-            <div class="w-full flex justify-between items-center text-[10px] font-mono text-cyan-400 font-bold mb-1">
-              <span>ПОЗ ${slot.pos}</span>
-              <button onclick="event.stopPropagation(); removeHeroFromSlot('radiant', ${idx})" class="w-4 h-4 rounded hover:bg-red-900/80 text-slate-400 hover:text-white flex items-center justify-center text-xs" title="Убрать героя">×</button>
-            </div>
-            <div class="w-full aspect-[4/3] rounded overflow-hidden relative bg-slate-950 border border-slate-700">
-              <img src="${getValveHeroImageUrl(hero.id)}" alt="${hero.nameRu}" class="w-full h-full object-cover" onerror="handleImgError(this, '${hero.nameRu}', '${hero.attr}')">
-            </div>
-            <div class="w-full text-center mt-1">
-              <span class="font-cinzel text-xs font-bold text-white truncate block">${hero.nameRu}</span>
-            </div>
-          `;
-          card.onclick = () => selectSlot('radiant', idx);
-        } else {
-          card.innerHTML = `
-            <div class="w-full flex justify-between items-center text-[10px] font-mono text-slate-400 font-bold mb-1">
-              <span>ПОЗ ${slot.pos}</span>
-              <span class="text-[9px] text-slate-500">${slot.roleRu}</span>
-            </div>
-            <div class="w-full aspect-[4/3] rounded border border-dashed border-slate-700 hover:border-cyan-400 bg-slate-900/40 flex flex-col items-center justify-center group">
-              <i data-lucide="plus" class="w-5 h-5 text-slate-500 group-hover:text-cyan-400 transition"></i>
-              <span class="text-[9px] font-mono text-slate-500 group-hover:text-cyan-300">Пикнуть</span>
-            </div>
-            <div class="w-full text-center mt-1">
-              <span class="font-mono text-[11px] text-slate-500">Пусто</span>
-            </div>
-          `;
-          card.onclick = () => {
-            selectSlot('radiant', idx);
-            openHeroModal();
-          };
-        }
-
-        radContainer.appendChild(card);
-      });
-
-      direContainer.innerHTML = '';
-      draft.dire.forEach((slot, idx) => {
-        const hero = findHero(slot.heroId);
-        const isTarget = activeSlotTarget.team === 'dire' && activeSlotTarget.index === idx;
-        const isLane = isSlotActiveInLane('dire', slot.pos);
-
-        const card = document.createElement('div');
-        card.className = `rounded-lg border-2 p-1.5 transition-all duration-200 relative flex flex-col items-center bg-[#070b13] cursor-pointer ${
-          isTarget ? 'slot-pulsing-target border-amber-400' : isLane ? 'border-red-500/70 line-indicator-dire' : 'border-slate-800 opacity-80 hover:opacity-100'
-        }`;
-
-        if (hero) {
-          card.innerHTML = `
-            <div class="w-full flex justify-between items-center text-[10px] font-mono text-red-400 font-bold mb-1">
-              <span>ПОЗ ${slot.pos}</span>
-              <button onclick="event.stopPropagation(); removeHeroFromSlot('dire', ${idx})" class="w-4 h-4 rounded hover:bg-red-900/80 text-slate-400 hover:text-white flex items-center justify-center text-xs" title="Убрать героя">×</button>
-            </div>
-            <div class="w-full aspect-[4/3] rounded overflow-hidden relative bg-slate-950 border border-slate-700">
-              <img src="${getValveHeroImageUrl(hero.id)}" alt="${hero.nameRu}" class="w-full h-full object-cover" onerror="handleImgError(this, '${hero.nameRu}', '${hero.attr}')">
-            </div>
-            <div class="w-full text-center mt-1">
-              <span class="font-cinzel text-xs font-bold text-white truncate block">${hero.nameRu}</span>
-            </div>
-          `;
-          card.onclick = () => selectSlot('dire', idx);
-        } else {
-          card.innerHTML = `
-            <div class="w-full flex justify-between items-center text-[10px] font-mono text-slate-400 font-bold mb-1">
-              <span>ПОЗ ${slot.pos}</span>
-              <span class="text-[9px] text-slate-500">${slot.roleRu}</span>
-            </div>
-            <div class="w-full aspect-[4/3] rounded border border-dashed border-slate-700 hover:border-red-400 bg-slate-900/40 flex flex-col items-center justify-center group">
-              <i data-lucide="plus" class="w-5 h-5 text-slate-500 group-hover:text-red-400 transition"></i>
-              <span class="text-[9px] font-mono text-slate-500 group-hover:text-red-300">Пикнуть</span>
-            </div>
-            <div class="w-full text-center mt-1">
-              <span class="font-mono text-[11px] text-slate-500">Пусто</span>
-            </div>
-          `;
-          card.onclick = () => {
-            selectSlot('dire', idx);
-            openHeroModal();
-          };
-        }
-
-        direContainer.appendChild(card);
-      });
-
-      lucide.createIcons();
-    }
-
-    // Select Slot
-    function selectSlot(team, index) {
-      activeSlotTarget = { team, index };
-      renderDraftBoards();
-      updateModalBadge();
-      const currentHeroId = draft[team][index].heroId;
-      if (currentHeroId) {
-        updateHeroMetaCard(currentHeroId);
+        renderSlots();
+      } catch (err) {
+        document.getElementById('status-hint').innerText = 'Ошибка соединения с OpenDota API. Попробуйте обновить страницу.';
+        document.getElementById('status-hint').className = 'text-red-400 font-bold';
       }
     }
 
-    // Remove single hero
-    function removeHeroFromSlot(team, index) {
-      draft[team][index].heroId = null;
-      renderDraftBoards();
-      updateMatchupsAndWinrate();
-      showToast(`Слот ${team === 'radiant' ? 'Света' : 'Тьмы'} очищен`);
+    function getHeroImage(hero) {
+      if (!hero) return '';
+      const shortName = hero.name.replace('npc_dota_hero_', '');
+      return `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${shortName}.png`;
     }
 
-    // Clear entire 5v5 draft
-    function clearFullDraft() {
-      for (let i = 0; i < 5; i++) {
-        draft.radiant[i].heroId = null;
-        draft.dire[i].heroId = null;
-      }
-      activeSlotTarget = { team: 'radiant', index: 0 };
-      renderDraftBoards();
-      updateMatchupsAndWinrate();
-      resetHeroMetaCard();
-      showToast('Все пики полностью очищены!');
-    }
+    function renderSlots() {
+      const renderTeam = (team, containerId) => {
+        const container = document.getElementById(containerId);
+        container.innerHTML = '';
 
-    // Lane Focus Switcher
-    function setLaneFocus(lane) {
-      currentLaneFocus = lane;
-      ['safe', 'mid', 'off', 'all'].forEach(l => {
-        const btn = document.getElementById(`lane-btn-${l}`);
-        if (btn) {
-          if (l === lane) {
-            btn.className = "px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase transition bg-gradient-to-r from-amber-600 to-amber-500 text-white shadow-md whitespace-nowrap";
+        draft[team].forEach((heroId, idx) => {
+          const hero = heroesById[heroId];
+          const div = document.createElement('div');
+          div.className = "flex flex-col items-center cursor-pointer";
+          div.onclick = () => openModal(team, idx);
+
+          if (hero) {
+            div.innerHTML = `
+              <div class="relative w-full aspect-[16/9] rounded-xl overflow-hidden border-2 ${team === 'rad' ? 'border-emerald-500 shadow-emerald-950/40' : 'border-red-500 shadow-red-950/40'} shadow-md">
+                <img src="${getHeroImage(hero)}" class="w-full h-full object-cover" onerror="this.onerror=null;this.src='https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/pudge.png'">
+                <button onclick="event.stopPropagation(); removeHero('${team}', ${idx})" title="Убрать героя"
+                        class="absolute top-1 right-1 w-5 h-5 bg-black/80 hover:bg-red-600 rounded text-white flex items-center justify-center text-xs font-black transition">
+                  &times;
+                </button>
+              </div>
+              <span class="text-[11px] font-semibold mt-1 truncate max-w-full text-slate-300">${hero.localized_name}</span>
+            `;
           } else {
-            btn.className = "px-3.5 py-1.5 rounded-lg text-xs font-bold uppercase transition text-slate-400 hover:text-white whitespace-nowrap";
+            div.innerHTML = `
+              <div class="w-full aspect-[16/9] rounded-xl border-2 border-dashed border-slate-800 hover:border-slate-600 flex flex-col items-center justify-center bg-slate-900/60 transition">
+                <span class="text-xl text-slate-500 font-light">+</span>
+              </div>
+              <span class="text-[10px] text-slate-500 mt-1">Поз. ${idx + 1}</span>
+            `;
           }
+          container.appendChild(div);
+        });
+      };
+
+      renderTeam('rad', 'rad-slots');
+      renderTeam('dire', 'dire-slots');
+    }
+
+    function openModal(team, idx) {
+      targetSlot = { team, idx };
+      document.getElementById('modal-title').textContent = `Выбор героя для: ${team === 'rad' ? 'Силы Света' : 'Силы Тьмы'} (Позиция ${idx + 1})`;
+      document.getElementById('hero-modal').classList.remove('hidden');
+      document.getElementById('hero-modal').classList.add('flex');
+      document.getElementById('hero-search').value = '';
+      filterHeroesGrid();
+      setTimeout(() => document.getElementById('hero-search').focus(), 100);
+    }
+
+    function closeModal() {
+      document.getElementById('hero-modal').classList.add('hidden');
+      document.getElementById('hero-modal').classList.remove('flex');
+    }
+
+    function setAttrFilter(attr) {
+      currentAttr = attr;
+      document.querySelectorAll('.attr-btn').forEach(btn => {
+        if (btn.dataset.attr === attr) {
+          btn.className = "attr-btn px-3 py-1.5 rounded-lg font-bold bg-sky-500 text-white";
+        } else {
+          btn.className = "attr-btn px-3 py-1.5 rounded-lg font-bold text-slate-400 hover:text-white";
         }
       });
-      renderDraftBoards();
-      updateMatchupsAndWinrate();
-      showToast(`Линия: ${lane === 'safe' ? 'Легкая' : lane === 'mid' ? 'Центр' : lane === 'off' ? 'Сложная' : 'Весь драфт'}`);
-    }
-  </script>
-
-  <script>
-    // Open & Close Hero Picker Modal
-    function openHeroModal() {
-      const modal = document.getElementById('heroPickerModal');
-      updateModalBadge();
-      modal.classList.remove('hidden');
-      document.getElementById('modal-hero-search').value = '';
       filterHeroesGrid();
-      setTimeout(() => document.getElementById('modal-hero-search').focus(), 50);
-    }
-
-    function openHeroModalFromHeader() {
-      openHeroModal();
-    }
-
-    function closeHeroModal() {
-      document.getElementById('heroPickerModal').classList.add('hidden');
-    }
-
-    function updateModalBadge() {
-      const { team, index } = activeSlotTarget;
-      const slot = draft[team][index];
-      const teamLabel = team === 'radiant' ? 'СВЕТ' : 'ТЬМА';
-      document.getElementById('modal-target-badge').textContent = `${teamLabel}: Поз. ${slot.pos} (${slot.roleRu})`;
-    }
-
-    // Render 4 Attribute Columns inside Modal
-    function renderHeroPickerModalGrid() {
-      const search = (document.getElementById('modal-hero-search')?.value || '').toLowerCase().trim();
-      const colStr = document.getElementById('col-str');
-      const colAgi = document.getElementById('col-agi');
-      const colInt = document.getElementById('col-int');
-      const colUni = document.getElementById('col-uni');
-
-      colStr.innerHTML = '';
-      colAgi.innerHTML = '';
-      colInt.innerHTML = '';
-      colUni.innerHTML = '';
-
-      let cStr = 0, cAgi = 0, cInt = 0, cUni = 0;
-
-      // Sort alphabetically
-      const sorted = [...HEROES_DB].sort((a, b) => a.nameRu.localeCompare(b.nameRu));
-
-      sorted.forEach(hero => {
-        const matches = hero.nameRu.toLowerCase().includes(search) || hero.nameEn.toLowerCase().includes(search) || hero.id.includes(search);
-        if (!matches) return;
-
-        const card = document.createElement('div');
-        card.className = "hero-grid-item cursor-pointer rounded-md overflow-hidden bg-slate-900 border border-slate-800 hover:border-amber-400 flex flex-col group relative";
-        card.onclick = () => {
-          applyHeroToSlot(hero.id);
-          closeHeroModal();
-        };
-
-        card.innerHTML = `
-          <div class="aspect-[3/4] w-full overflow-hidden bg-slate-950 relative">
-            <img src="${getValveHeroImageUrl(hero.id)}" alt="${hero.nameRu}" class="w-full h-full object-cover" onerror="handleImgError(this, '${hero.nameRu}', '${hero.attr}')">
-            <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black via-black/70 to-transparent p-1">
-              <span class="text-[9px] font-sans font-bold text-white truncate block leading-tight">${hero.nameRu}</span>
-            </div>
-          </div>
-        `;
-
-        if (hero.attr === 'str') { colStr.appendChild(card); cStr++; }
-        else if (hero.attr === 'agi') { colAgi.appendChild(card); cAgi++; }
-        else if (hero.attr === 'int') { colInt.appendChild(card); cInt++; }
-        else if (hero.attr === 'uni') { colUni.appendChild(card); cUni++; }
-      });
-
-      document.getElementById('count-str').textContent = cStr;
-      document.getElementById('count-agi').textContent = cAgi;
-      document.getElementById('count-int').textContent = cInt;
-      document.getElementById('count-uni').textContent = cUni;
     }
 
     function filterHeroesGrid() {
-      renderHeroPickerModalGrid();
+      const q = document.getElementById('hero-search').value.toLowerCase().trim();
+      const grid = document.getElementById('modal-grid');
+      grid.innerHTML = '';
+
+      const taken = new Set([...draft.rad, ...draft.dire].filter(Boolean));
+
+      const filtered = heroesList.filter(h => {
+        if (taken.has(h.id)) return false;
+        if (q && !h.localized_name.toLowerCase().includes(q) && !h.name.toLowerCase().includes(q)) return false;
+        if (currentAttr === 'str' && h.primary_attr !== 'str') return false;
+        if (currentAttr === 'agi' && h.primary_attr !== 'agi') return false;
+        if (currentAttr === 'int' && h.primary_attr !== 'int') return false;
+        if (currentAttr === 'all_attr' && h.primary_attr !== 'all') return false;
+        return true;
+      });
+
+      filtered.forEach(h => {
+        const item = document.createElement('div');
+        item.className = "hero-btn cursor-pointer bg-slate-800/80 hover:bg-slate-700/80 p-1.5 rounded-xl border border-slate-700/50 flex flex-col items-center text-center";
+        item.onclick = () => selectHero(h.id);
+        item.innerHTML = `
+          <img src="${getHeroImage(h)}" class="w-full aspect-[16/9] object-cover rounded-lg mb-1" loading="lazy">
+          <span class="text-[10px] font-medium leading-tight truncate w-full text-slate-200">${h.localized_name}</span>
+        `;
+        grid.appendChild(item);
+      });
     }
 
-    // Apply hero to active targeted slot
-    function applyHeroToSlot(heroId) {
-      const { team, index } = activeSlotTarget;
-      draft[team][index].heroId = heroId;
-
-      renderDraftBoards();
-      updateHeroMetaCard(heroId);
-      updateMatchupsAndWinrate();
-
-      const hero = findHero(heroId);
-      showToast(`${hero.nameRu} выбран в команду ${team === 'radiant' ? 'Света' : 'Тьмы'}!`);
+    function selectHero(heroId) {
+      if (!targetSlot) return;
+      draft[targetSlot.team][targetSlot.idx] = heroId;
+      closeModal();
+      renderSlots();
+      recalculateDraft();
     }
 
-    // Quick pick from recommendations into the first available allied slot
-    function autoPickRecommended(heroId) {
-      // Find first empty slot in Radiant
-      let freeIdx = draft.radiant.findIndex(s => s.heroId === null);
-      if (freeIdx === -1) {
-        freeIdx = activeSlotTarget.team === 'radiant' ? activeSlotTarget.index : 0;
+    function removeHero(team, idx) {
+      draft[team][idx] = null;
+      renderSlots();
+      recalculateDraft();
+    }
+
+    function clearAll() {
+      draft.rad = [null, null, null, null, null];
+      draft.dire = [null, null, null, null, null];
+      renderSlots();
+      recalculateDraft();
+    }
+
+    // Загрузка реальных матчапов с OpenDota
+    async function fetchHeroMatchups(heroId) {
+      if (matchupsCache[heroId]) return matchupsCache[heroId];
+      try {
+        const res = await fetch(`${OPENDOTA_API}/heroes/${heroId}/matchups`);
+        if (!res.ok) return [];
+        const data = await res.json();
+        matchupsCache[heroId] = data;
+        return data;
+      } catch (e) {
+        return [];
       }
-      draft.radiant[freeIdx].heroId = heroId;
-      activeSlotTarget = { team: 'radiant', index: freeIdx };
-
-      renderDraftBoards();
-      updateHeroMetaCard(heroId);
-      updateMatchupsAndWinrate();
-
-      const hero = findHero(heroId);
-      showToast(`+ ${hero.nameRu} добавлен в слот Поз. ${draft.radiant[freeIdx].pos}!`);
-    }
-  </script>
-
-  <script>
-    // Authentic Dota Pro Tracker & Counter Matrix
-    const HERO_META = {
-      'slark': {
-        counters: [
-          { id: 'bloodseeker', adv: '+8.4%', why: 'Пассивка Thirst видит Slark в ульте Shadow Dance при низком HP.' },
-          { id: 'axe', adv: '+6.8%', why: 'Berserker Call нельзя снять очищением Dark Pact.' },
-          { id: 'leshrac', adv: '+6.1%', why: 'Постоянный магический АоЕ-урон выбивает из строя.' },
-          { id: 'centaur', adv: '+5.4%', why: 'Retaliate наказывает за высокую скорость атаки.' }
-        ],
-        badAgainst: [
-          { id: 'drow_ranger', adv: '-7.9%', why: 'Легкая цель без брони; Slark сокращает дистанцию с Pounce.' },
-          { id: 'medusa', adv: '-7.2%', why: 'Бесконечное воровство статов Essence Shift против медленной Медузы.' },
-          { id: 'wraith_king', adv: '-6.5%', why: 'Лишает маны и крадет статы во время двух жизней.' },
-          { id: 'tidehunter', adv: '-5.7%', why: 'Dark Pact моментально очищает Gush и Anchor Smash.' }
-        ],
-        dpt: {
-          wr: '53.4%', matches: '4,120',
-          items: ['Tango', 'Quelling Blade', 'Circlet', 'Slippers of Agility', 'Branch x2'],
-          timings: [
-            { item: 'Diffusal Blade', time: '10:45' },
-            { item: 'Aghanim Scepter', time: '17:30' },
-            { item: 'Black King Bar', time: '22:15' }
-          ],
-          blueprint: 'Держите пассивную стойку до 6 уровня. Играйте от переагра крипов. На 6 уровне начинайте активно размениваться по HP — вы восстановите здоровье за 6 секунд в инвизе.'
-        }
-      },
-      'axe': {
-        counters: [
-          { id: 'viper', adv: '+7.9%', why: 'Яд Viper Strike и пассивка снимают всю мобильность и броню.' },
-          { id: 'timbersaw', adv: '+7.2%', why: 'Чистый урон пилы и Reactive Armor нейтрализуют крутилку Axe.' },
-          { id: 'lifestealer', adv: '+6.4%', why: 'Feast наносит процентный урон от огромного запаса здоровья Axe.' },
-          { id: 'necrophos', adv: '+5.8%', why: 'Aura и коса убивают танка за секунды.' }
-        ],
-        badAgainst: [
-          { id: 'phantom_assassin', adv: '-8.5%', why: 'Call заставляет бить в обратку и моментально убивает критами.' },
-          { id: 'dazzle', adv: '-7.3%', why: 'Culling Blade моментально разрубает сквозь крест Grave.' },
-          { id: 'anti_mage', adv: '-6.4%', why: 'Слабый начальный пул здоровья АМа падает от спинов.' },
-          { id: 'slark', adv: '-5.8%', why: 'Не может скинуть агр топором даже в пакте.' }
-        ],
-        dpt: {
-          wr: '52.8%', matches: '3,890',
-          items: ['Tango', 'Ring of Protection', 'Quelling Blade', 'Gauntlets of Strength', 'Branch'],
-          timings: [
-            { item: 'Blink Dagger', time: '11:20' },
-            { item: 'Blade Mail', time: '15:10' },
-            { item: 'Aghanim Shard', time: '18:40' }
-          ],
-          blueprint: 'Отрезайте крипов между Т1 и Т2 вышкой на 2–3 пачке, если вражеский керри слаб. Контролируйте Лотус на 3:00 с помощью Battle Hunger.'
-        }
-      },
-      'invoker': {
-        counters: [
-          { id: 'broodmother', adv: '+9.4%', why: 'Пауки загрызают Инвокера до 5 уровня без шансов.' },
-          { id: 'templar_assassin', adv: '+7.8%', why: 'Refraction нивелирует весь берст от Sunstrike и Meteor.' },
-          { id: 'kunkka', adv: '+6.5%', why: 'Tidebringer безнаказанно харассит и выбивает с центра.' },
-          { id: 'viper', adv: '+5.9%', why: 'Отключает регенерацию Quas и выигрывает любой размен.' }
-        ],
-        badAgainst: [
-          { id: 'shadow_fiend', adv: '-6.7%', why: 'Cold Snap прерывает каст койлов и сбивает фарм.' },
-          { id: 'storm_spirit', adv: '-6.2%', why: 'EMP выжигает ману, без которой Storm бесполезен.' },
-          { id: 'pudge', adv: '-5.7%', why: 'Легкая цель для прокаста через Sunstrike + Forge.' },
-          { id: 'zeus', adv: '-5.1%', why: 'Быстро погибает от фокуса духов и замедления.' }
-        ],
-        dpt: {
-          wr: '51.7%', matches: '5,600',
-          items: ['Tango', 'Circlet', 'Mantle of Intelligence', 'Faerie Fire', 'Branches x2'],
-          timings: [
-            { item: 'Urn of Shadows', time: '07:10' },
-            { item: 'Witch Blade', time: '12:40' },
-            { item: 'Aghanim Scepter', time: '19:20' }
-          ],
-          blueprint: 'Контролируйте руны воды на 2:00 и 4:00. Призовите Forge Spirit к 3:00 для деная крипов и помощи в ластхите.'
-        }
-      }
-    };
-
-    // Generic meta generator for all other heroes
-    function getMetaForHero(heroId) {
-      if (HERO_META[heroId]) return HERO_META[heroId];
-      const h = findHero(heroId);
-      if (!h) return null;
-
-      const isCarry = h.roles.includes('1');
-      return {
-        counters: [
-          { id: 'viper', adv: '+6.5%', why: 'Nethertoxin отключает сильные пассивные скиллы.' },
-          { id: 'razor', adv: '+6.1%', why: 'Static Link высасывает весь физический урон на линии.' },
-          { id: 'axe', adv: '+5.6%', why: 'Провокация и чистый урон от вращения.' },
-          { id: 'doom_bringer', adv: '+5.1%', why: 'Doom выключает героя из драки на 16 секунд.' }
-        ],
-        badAgainst: [
-          { id: 'spectre', adv: '-6.8%', why: 'Слабый темп раннего лайнинга против раннего пуша.' },
-          { id: 'pudge', adv: '-6.2%', why: 'Медленный герой без эскейпа, легкая цель для хука.' },
-          { id: 'crystal_maiden', adv: '-5.5%', why: 'Малый запас здоровья, уязвима к сближению.' },
-          { id: 'antimage', adv: '-4.9%', why: 'Не может оказать сопротивления ранней агрессии.' }
-        ],
-        dpt: {
-          wr: '52.2%', matches: '3,100',
-          items: ['Tango', 'Quelling Blade', 'Circlet', 'Magic Stick', 'Branch x2'],
-          timings: [
-            { item: isCarry ? 'Manta Style' : 'Blink Dagger', time: isCarry ? '14:40' : '11:30' },
-            { item: 'Black King Bar', time: '20:10' },
-            { item: 'Aghanim Scepter', time: '25:40' }
-          ],
-          blueprint: 'Контролируйте баланс крипов на своей половине линии. Забирайте Лотус на 3:00 минуте. При пропуше делайте отвод на малый лагерь крипов.'
-        }
-      };
     }
 
-    // Dynamic Lane Winrate & Counters Calculation
-    function updateMatchupsAndWinrate() {
-      let radLaneHeroes = [];
-      let direLaneHeroes = [];
+    // Основной математический движок
+    async function recalculateDraft() {
+      const activeEnemies = draft.dire.filter(Boolean);
+      const activeAllies = draft.rad.filter(Boolean);
 
-      if (currentLaneFocus === 'safe') {
-        if (draft.radiant[0].heroId) radLaneHeroes.push(draft.radiant[0].heroId);
-        if (draft.radiant[4].heroId) radLaneHeroes.push(draft.radiant[4].heroId);
-        if (draft.dire[2].heroId) direLaneHeroes.push(draft.dire[2].heroId);
-        if (draft.dire[3].heroId) direLaneHeroes.push(draft.dire[3].heroId);
-      } else if (currentLaneFocus === 'mid') {
-        if (draft.radiant[1].heroId) radLaneHeroes.push(draft.radiant[1].heroId);
-        if (draft.dire[1].heroId) direLaneHeroes.push(draft.dire[1].heroId);
-      } else if (currentLaneFocus === 'off') {
-        if (draft.radiant[2].heroId) radLaneHeroes.push(draft.radiant[2].heroId);
-        if (draft.radiant[3].heroId) radLaneHeroes.push(draft.radiant[3].heroId);
-        if (draft.dire[0].heroId) direLaneHeroes.push(draft.dire[0].heroId);
-        if (draft.dire[4].heroId) direLaneHeroes.push(draft.dire[4].heroId);
-      } else {
-        radLaneHeroes = draft.radiant.map(s => s.heroId).filter(Boolean);
-        direLaneHeroes = draft.dire.map(s => s.heroId).filter(Boolean);
-      }
-
-      const radMeter = document.getElementById('radiant-meter-bar');
-      const direMeter = document.getElementById('dire-meter-bar');
-      const radText = document.getElementById('radiant-winrate-text');
-      const direText = document.getElementById('dire-winrate-text');
-      const tag = document.getElementById('lane-advantage-tag');
-
-      // If no heroes are picked on this lane yet
-      if (radLaneHeroes.length === 0 && direLaneHeroes.length === 0) {
-        radMeter.style.width = '50%';
-        direMeter.style.width = '50%';
-        radText.textContent = '50.0%';
-        direText.textContent = '50.0%';
-        tag.className = "text-[11px] px-2.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800 font-sans font-medium";
-        tag.textContent = "Ожидание пиков на линии...";
-        renderEmptyCounters();
+      if (activeEnemies.length === 0) {
+        document.getElementById('rad-label').textContent = 'СИЛЫ СВЕТА (RADIANT): 50.0%';
+        document.getElementById('dire-label').textContent = '50.0% :СИЛЫ ТЬМЫ (DIRE)';
+        document.getElementById('prob-bar').style.width = '50%';
+        document.getElementById('status-hint').textContent = 'Выберите врагов для расчета';
+        document.getElementById('rec-status').textContent = 'Ожидание выбора';
+        document.getElementById('rec-container').innerHTML = `
+          <div class="p-4 rounded-xl border border-dashed border-slate-800 text-center text-xs text-slate-500">
+            Кликните по слотам врагов и выберите героев.
+          </div>`;
+        document.getElementById('worst-container').innerHTML = `
+          <div class="p-4 rounded-xl border border-dashed border-slate-800 text-center text-xs text-slate-500">
+            Здесь появятся герои с наименьшим шансом на победу.
+          </div>`;
         return;
       }
 
-      // Calculate advantage based on picked heroes
-      let score = 50.0;
+      document.getElementById('rec-status').textContent = 'Считаем по OpenDota...';
+      document.getElementById('status-hint').textContent = 'Загрузка матчапов...';
 
-      direLaneHeroes.forEach(eId => {
-        const meta = getMetaForHero(eId);
-        if (!meta) return;
-        radLaneHeroes.forEach(aId => {
-          if (meta.counters.some(c => c.id === aId)) score += 6.5;
-          if (meta.badAgainst.some(b => b.id === aId)) score -= 6.0;
+      // Скачиваем матчапы каждого врага
+      const enemyMatchups = await Promise.all(activeEnemies.map(id => fetchHeroMatchups(id)));
+
+      // Считаем совокупное преимущество для каждого героя в Доте
+      const scoreMap = {};
+      heroesList.forEach(h => { scoreMap[h.id] = 0; });
+
+      activeEnemies.forEach((enemyId, i) => {
+        const matchups = enemyMatchups[i];
+        matchups.forEach(m => {
+          const candidateId = m.hero_id;
+          const games = m.games_played || 0;
+          const enemyWins = m.wins || 0;
+          if (games >= 25 && scoreMap[candidateId] !== undefined) {
+            // В OpenDota 'wins' — это сколько раз враг (enemyId) победил кандидата
+            // Поэтому винрейт кандидата против этого врага:
+            const candidateWinrate = (1 - (enemyWins / games)) * 100;
+            const diff = candidateWinrate - 50; // преимущество
+            scoreMap[candidateId] += diff;
+          }
         });
       });
 
-      // Weight adjustment if one side is missing heroes
-      if (radLaneHeroes.length > 0 && direLaneHeroes.length === 0) score += 3.0;
-      if (direLaneHeroes.length > 0 && radLaneHeroes.length === 0) score -= 3.0;
+      // Исключаем уже выбранных героев
+      const taken = new Set([...activeAllies, ...activeEnemies]);
 
-      score = Math.max(18.0, Math.min(82.0, score));
-      const radWr = score.toFixed(1);
-      const direWr = (100.0 - score).toFixed(1);
+      const candidates = heroesList
+        .filter(h => !taken.has(h.id))
+        .map(h => ({
+          hero: h,
+          score: scoreMap[h.id] / activeEnemies.length // средний перевес в %
+        }));
 
-      radMeter.style.width = `${radWr}%`;
-      direMeter.style.width = `${direWr}%`;
-      radText.textContent = `${radWr}%`;
-      direText.textContent = `${direWr}%`;
+      candidates.sort((a, b) => b.score - a.score);
 
-      const diff = (score - 50.0).toFixed(1);
-      if (score >= 54.0) {
-        tag.className = "text-[11px] px-2.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 font-sans font-bold";
-        tag.textContent = `ПРЕИМУЩЕСТВО СВЕТА (+${diff}%)`;
-      } else if (score <= 46.0) {
-        tag.className = "text-[11px] px-2.5 py-0.5 rounded bg-rose-950 text-rose-400 border border-rose-800 font-sans font-bold";
-        tag.textContent = `ПРЕИМУЩЕСТВО ТЬМЫ (+${Math.abs(diff)}%)`;
-      } else {
-        tag.className = "text-[11px] px-2.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 font-sans font-bold";
-        tag.textContent = `РАВНЫЙ ЛАЙНИНГ (50/50)`;
-      }
+      const bestPicks = candidates.slice(0, 4);
+      const worstPicks = candidates.slice(-4).reverse();
 
-      // Populate Recommendations based on primary enemy
-      const enemyHeroId = direLaneHeroes[0] || draft.dire.find(s => s.heroId)?.heroId || null;
-      if (enemyHeroId) {
-        renderCountersForEnemy(enemyHeroId);
-      } else {
-        renderEmptyCounters();
-      }
-    }
+      // Оценка винрейта союзников
+      let radiantScoreSum = 0;
+      activeAllies.forEach(alliedId => {
+        radiantScoreSum += (scoreMap[alliedId] || 0) / activeEnemies.length;
+      });
 
-    // Render counter lists
-    function renderCountersForEnemy(enemyId) {
-      const meta = getMetaForHero(enemyId);
-      const enemy = findHero(enemyId);
-      if (!meta || !enemy) return;
+      const avgAdvantage = activeAllies.length > 0 ? (radiantScoreSum / activeAllies.length) : 0;
+      const radiantWinProb = Math.min(Math.max(50 + avgAdvantage, 10), 90);
+      const direWinProb = 100 - radiantWinProb;
 
-      // Green list
-      const greenList = document.getElementById('green-zone-list');
-      greenList.innerHTML = '';
-      meta.counters.slice(0, 4).forEach(c => {
-        const h = findHero(c.id);
-        if (!h) return;
-        const item = document.createElement('div');
-        item.className = "flex items-center justify-between p-2 rounded-lg bg-[#071318] border border-emerald-900/50 hover:border-emerald-500/60 transition gap-2";
-        item.innerHTML = `
-          <div class="flex items-center space-x-2.5 min-w-0">
-            <img src="${getValveHeroImageUrl(h.id)}" alt="${h.nameRu}" class="w-10 h-8 rounded object-cover border border-emerald-700/60 flex-shrink-0" onerror="handleImgError(this, '${h.nameRu}', '${h.attr}')">
-            <div class="min-w-0">
-              <div class="flex items-center gap-1.5">
-                <span class="font-cinzel text-xs font-bold text-white truncate">${h.nameRu}</span>
-                <span class="text-[10px] font-mono text-emerald-400 font-bold">${c.adv}</span>
-              </div>
-              <p class="text-[10px] text-slate-300 truncate">${c.why}</p>
+      // Отображение шансов
+      document.getElementById('rad-label').textContent = `СИЛЫ СВЕТА (RADIANT): ${radiantWinProb.toFixed(1)}%`;
+      document.getElementById('dire-label').textContent = `${direWinProb.toFixed(1)}% :СИЛЫ ТЬМЫ (DIRE)`;
+      document.getElementById('prob-bar').style.width = `${radiantWinProb}%`;
+      document.getElementById('status-hint').textContent = `Рассчитано по ${activeEnemies.length} врагам`;
+      document.getElementById('rec-status').textContent = 'Готово';
+
+      // Отрисовка контрпиков
+      document.getElementById('rec-container').innerHTML = bestPicks.map(p => `
+        <div class="flex items-center justify-between bg-slate-900/90 border border-emerald-900/40 p-2.5 rounded-xl">
+          <div class="flex items-center gap-3">
+            <img src="${getHeroImage(p.hero)}" class="w-12 aspect-[16/9] object-cover rounded-lg border border-emerald-500/50">
+            <div>
+              <div class="text-xs font-bold text-white">${p.hero.localized_name}</div>
+              <div class="text-[10px] text-emerald-400 font-semibold">+${p.score.toFixed(1)}% винрейта против пика</div>
             </div>
           </div>
-          <button onclick="autoPickRecommended('${h.id}')" class="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-black font-bold text-[10px] uppercase font-mono transition flex-shrink-0 shadow">
+          <button onclick="pickIntoEmptyRadSlot(${p.hero.id})" class="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500 border border-emerald-500/60 text-emerald-300 hover:text-black rounded-lg text-xs font-black transition">
             + Взять
           </button>
-        `;
-        greenList.appendChild(item);
-      });
+        </div>
+      `).join('');
 
-      // Red list
-      const redList = document.getElementById('red-zone-list');
-      redList.innerHTML = '';
-      meta.badAgainst.slice(0, 4).forEach(b => {
-        const h = findHero(b.id);
-        if (!h) return;
-        const item = document.createElement('div');
-        item.className = "flex items-center justify-between p-2 rounded-lg bg-[#14080c] border border-rose-900/50 transition gap-2";
-        item.innerHTML = `
-          <div class="flex items-center space-x-2.5 min-w-0">
-            <img src="${getValveHeroImageUrl(h.id)}" alt="${h.nameRu}" class="w-10 h-8 rounded object-cover border border-rose-700/60 flex-shrink-0" onerror="handleImgError(this, '${h.nameRu}', '${h.attr}')">
-            <div class="min-w-0">
-              <div class="flex items-center gap-1.5">
-                <span class="font-cinzel text-xs font-bold text-white truncate">${h.nameRu}</span>
-                <span class="text-[10px] font-mono text-rose-400 font-bold">ФАТАЛЬНО</span>
-              </div>
-              <p class="text-[10px] text-slate-400 truncate">${b.why}</p>
+      // Отрисовка худших
+      document.getElementById('worst-container').innerHTML = worstPicks.map(p => `
+        <div class="flex items-center justify-between bg-slate-900/90 border border-red-900/40 p-2.5 rounded-xl">
+          <div class="flex items-center gap-3">
+            <img src="${getHeroImage(p.hero)}" class="w-12 aspect-[16/9] object-cover rounded-lg border border-red-500/50">
+            <div>
+              <div class="text-xs font-bold text-white">${p.hero.localized_name}</div>
+              <div class="text-[10px] text-red-400 font-semibold">${p.score.toFixed(1)}% винрейта (контрят)</div>
             </div>
           </div>
-        `;
-        redList.appendChild(item);
-      });
-    }
-
-    function renderEmptyCounters() {
-      document.getElementById('green-zone-list').innerHTML = `
-        <div class="p-4 text-center text-xs font-mono text-slate-500 border border-dashed border-slate-800 rounded-lg">
-          Пикните героя во вражескую команду (Dire), чтобы ИИ рассчитал лучшие контрпики для победы на линии.
+          <span class="text-red-400 text-xs font-black pr-2">Опасно</span>
         </div>
-      `;
-      document.getElementById('red-zone-list').innerHTML = `
-        <div class="p-4 text-center text-xs font-mono text-slate-500 border border-dashed border-slate-800 rounded-lg">
-          Здесь появятся герои, которых брать категорически нельзя против выбранных врагов.
-        </div>
-      `;
+      `).join('');
     }
 
-    // Update Meta Information Card for Selected Hero
-    function updateHeroMetaCard(heroId) {
-      const hero = findHero(heroId);
-      const meta = getMetaForHero(heroId);
-      if (!hero || !meta) return;
-
-      const portraitWrapper = document.getElementById('meta-hero-portrait-wrapper');
-      portraitWrapper.innerHTML = `
-        <img src="${getValveHeroImageUrl(hero.id)}" alt="${hero.nameRu}" class="w-full h-full object-cover" onerror="handleImgError(this, '${hero.nameRu}', '${hero.attr}')">
-      `;
-
-      document.getElementById('meta-hero-name').textContent = hero.nameRu;
-      document.getElementById('meta-hero-role').textContent = `Поз. ${hero.roles.join('/')} • ${hero.attr.toUpperCase()}`;
-      document.getElementById('meta-hero-wr').textContent = meta.dpt.wr;
-      document.getElementById('meta-hero-matches').textContent = `(${meta.dpt.matches} матчей)`;
-      document.getElementById('meta-hero-dpt-link').href = `https://dota2protracker.com/hero/${encodeURIComponent(hero.nameEn)}`;
-
-      // Starting items
-      const startContainer = document.getElementById('meta-starting-items');
-      startContainer.innerHTML = '';
-      meta.dpt.items.forEach(it => {
-        const tag = document.createElement('span');
-        tag.className = "px-2 py-0.5 bg-slate-900 border border-slate-700 rounded text-[11px] font-mono text-slate-200";
-        tag.textContent = it;
-        startContainer.appendChild(tag);
-      });
-
-      // Timings
-      const timingsContainer = document.getElementById('meta-key-items');
-      timingsContainer.innerHTML = '';
-      meta.dpt.timings.forEach(tm => {
-        const box = document.createElement('div');
-        box.className = "bg-slate-900/90 border border-slate-800 p-1.5 rounded";
-        box.innerHTML = `
-          <div class="text-[10px] text-slate-400 truncate">${tm.item}</div>
-          <div class="text-xs font-bold text-amber-400">${tm.time}</div>
-        `;
-        timingsContainer.appendChild(box);
-      });
-
-      document.getElementById('ai-tactical-blueprint').textContent = meta.dpt.blueprint;
+    // Быстрая посадка контрпика в первый свободный слот
+    function pickIntoEmptyRadSlot(heroId) {
+      const emptyIdx = draft.rad.findIndex(id => id === null);
+      if (emptyIdx !== -1) {
+        draft.rad[emptyIdx] = heroId;
+        renderSlots();
+        recalculateDraft();
+      } else {
+        alert('Все слоты Сил Света уже заполнены! Освободите один из слотов.');
+      }
     }
 
-    function resetHeroMetaCard() {
-      const portraitWrapper = document.getElementById('meta-hero-portrait-wrapper');
-      portraitWrapper.innerHTML = `<span class="font-cinzel text-xs text-slate-600 font-bold">D2</span>`;
-      document.getElementById('meta-hero-name').textContent = 'Герой не выбран';
-      document.getElementById('meta-hero-role').textContent = 'Позиция';
-      document.getElementById('meta-hero-wr').textContent = '--%';
-      document.getElementById('meta-hero-matches').textContent = '(-- матчей)';
-      document.getElementById('meta-hero-dpt-link').href = 'https://dota2protracker.com';
-      document.getElementById('meta-starting-items').innerHTML = `<span class="text-xs text-slate-500 italic">Выберите героя для отображения закупа</span>`;
-      document.getElementById('meta-key-items').innerHTML = `
-        <div class="bg-slate-900/90 border border-slate-800 p-1.5 rounded text-xs text-slate-500">Слот 1</div>
-        <div class="bg-slate-900/90 border border-slate-800 p-1.5 rounded text-xs text-slate-500">Слот 2</div>
-        <div class="bg-slate-900/90 border border-slate-800 p-1.5 rounded text-xs text-slate-500">Слот 3</div>
-      `;
-      document.getElementById('ai-tactical-blueprint').textContent = 'Выберите героев на выбранную линию для получения инструкций по переагру крипов, контролю лотусов и рун.';
-    }
+    // Закрытие по ESC или фону
+    window.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+    document.getElementById('hero-modal').addEventListener('click', e => {
+      if (e.target.id === 'hero-modal') closeModal();
+    });
 
-    // Toast Utility
-    function showToast(msg) {
-      const toast = document.getElementById('toast');
-      document.getElementById('toast-text').textContent = msg;
-      toast.classList.remove('translate-y-24', 'opacity-0', 'pointer-events-none');
-      setTimeout(() => {
-        toast.classList.add('translate-y-24', 'opacity-0', 'pointer-events-none');
-      }, 2600);
-    }
+    init();
   </script>
 </body>
 </html>
