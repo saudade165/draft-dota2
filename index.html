@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Dota 2 Live Counterpick Engine · OpenDota API</title>
+  <title>Dota 2 Live Counterpick Engine & Tactical Coach</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { background-color: #080a0f; color: #f1f5f9; font-family: system-ui, -apple-system, sans-serif; }
@@ -12,6 +12,7 @@
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: #0f172a; }
     ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    .selected-player { box-shadow: 0 0 15px rgba(234, 179, 8, 0.6); border-color: #eab308 !important; }
   </style>
 </head>
 <body class="p-4 md:p-8 min-h-screen flex flex-col">
@@ -19,9 +20,9 @@
   <!-- Шапка -->
   <header class="max-w-6xl mx-auto w-full flex flex-wrap justify-between items-center gap-4 mb-6 pb-4 border-b border-slate-800">
     <div>
-      <div class="text-[11px] font-extrabold tracking-widest text-sky-400 uppercase">Dota 2 Real-Time Matchups</div>
+      <div class="text-[11px] font-extrabold tracking-widest text-sky-400 uppercase">Dota 2 Real-Time Matchups & AI Coach</div>
       <h1 class="text-2xl md:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-sky-300 to-red-400">
-        LIVE DRAFT & COUNTERPICK
+        LIVE DRAFT & TACTICAL COACH
       </h1>
       <p class="text-xs text-slate-400 mt-1 flex items-center gap-2">
         <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -35,7 +36,7 @@
     </div>
   </header>
 
-  <!-- Шкала вероятности победы линии -->
+  <!-- Шкала вероятности победы -->
   <div class="max-w-5xl mx-auto w-full mb-8 bg-slate-900/90 border border-slate-800/80 p-4 rounded-2xl shadow-xl">
     <div class="flex justify-between items-center text-xs md:text-sm font-black mb-2">
       <span class="text-emerald-400 flex items-center gap-1.5" id="rad-label">
@@ -58,7 +59,7 @@
     <div class="bg-slate-900/50 border border-emerald-900/30 rounded-2xl p-4">
       <div class="flex justify-between items-center mb-3">
         <h2 class="text-sm font-black text-emerald-400 tracking-wider">СИЛЫ СВЕТА (RADIANT)</h2>
-        <span class="text-[11px] text-slate-500">Твоя команда</span>
+        <span class="text-[11px] text-amber-400 font-semibold">Нажмите на звёздочку ★, чтобы выбрать своего героя</span>
       </div>
       <div class="grid grid-cols-5 gap-2" id="rad-slots"></div>
     </div>
@@ -72,6 +73,11 @@
       <div class="grid grid-cols-5 gap-2" id="dire-slots"></div>
     </div>
 
+  </div>
+
+  <!-- Блок «МОЙ ГЕРОЙ И ПЛАН НА ИГРУ» -->
+  <div id="player-strategy-section" class="max-w-6xl mx-auto w-full mb-10 hidden">
+    <!-- Сюда динамически отрисовывается гайд -->
   </div>
 
   <!-- Блоки рекомендаций OpenDota -->
@@ -141,31 +147,32 @@
   </div>
 
   <footer class="mt-auto text-center text-xs text-slate-600 py-4">
-    Данные контрпиков рассчитываются по официальной базе OpenDota API. Все арты и портреты принадлежат Valve Corporation.
+    Данные рассчитываются по официальной базе OpenDota API.
   </footer>
 
   <script>
     const OPENDOTA_API = 'https://api.opendota.com/api';
     let heroesList = [];
     let heroesById = {};
-    let matchupsCache = {}; // Кэш, чтобы не запрашивать одного и того же героя дважды
+    let matchupsCache = {};
 
-    let targetSlot = null; // { team: 'rad' | 'dire', idx: 0..4 }
+    let targetSlot = null;
     let currentAttr = 'all';
+    let myHeroSlotIdx = null; // Индекс слота, за которого играет пользователь (0..4)
 
     const draft = {
       rad: [null, null, null, null, null],
       dire: [null, null, null, null, null]
     };
 
-    // Загрузка героев с OpenDota
+    const rolesNames = ['Поз. 1 Керри', 'Поз. 2 Мид', 'Поз. 3 Хард', 'Поз. 4 Частичная поддержка', 'Поз. 5 Полная поддержка'];
+
     async function init() {
       try {
         const res = await fetch(`${OPENDOTA_API}/heroes`);
         if (!res.ok) throw new Error('Ошибка OpenDota');
         heroesList = await res.json();
         
-        // Сортировка по алфавиту
         heroesList.sort((a, b) => a.localized_name.localeCompare(b.localized_name));
         heroesList.forEach(h => {
           heroesById[h.id] = h;
@@ -173,7 +180,7 @@
 
         renderSlots();
       } catch (err) {
-        document.getElementById('status-hint').innerText = 'Ошибка соединения с OpenDota API. Попробуйте обновить страницу.';
+        document.getElementById('status-hint').innerText = 'Ошибка соединения с OpenDota API. Обновите страницу.';
         document.getElementById('status-hint').className = 'text-red-400 font-bold';
       }
     }
@@ -195,23 +202,36 @@
           div.className = "flex flex-col items-center cursor-pointer";
           div.onclick = () => openModal(team, idx);
 
+          const isMe = (team === 'rad' && myHeroSlotIdx === idx && heroId !== null);
+
           if (hero) {
             div.innerHTML = `
-              <div class="relative w-full aspect-[16/9] rounded-xl overflow-hidden border-2 ${team === 'rad' ? 'border-emerald-500 shadow-emerald-950/40' : 'border-red-500 shadow-red-950/40'} shadow-md">
-                <img src="${getHeroImage(hero)}" class="w-full h-full object-cover" onerror="this.onerror=null;this.src='https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/pudge.png'">
+              <div class="relative w-full aspect-[16/9] rounded-xl overflow-hidden border-2 ${isMe ? 'selected-player' : team === 'rad' ? 'border-emerald-500' : 'border-red-500'} shadow-md">
+                <img src="${getHeroImage(hero)}" class="w-full h-full object-cover">
+                
+                <!-- Крестик удаления -->
                 <button onclick="event.stopPropagation(); removeHero('${team}', ${idx})" title="Убрать героя"
                         class="absolute top-1 right-1 w-5 h-5 bg-black/80 hover:bg-red-600 rounded text-white flex items-center justify-center text-xs font-black transition">
                   &times;
                 </button>
+
+                <!-- Кнопка 'Я играю' (только для Radiant) -->
+                ${team === 'rad' ? `
+                  <button onclick="event.stopPropagation(); setMyHero(${idx})" title="Я играю на этом герое"
+                          class="absolute bottom-1 left-1 px-1.5 py-0.5 rounded text-[10px] font-black transition flex items-center gap-1 ${isMe ? 'bg-amber-400 text-black shadow-lg font-bold' : 'bg-black/75 hover:bg-amber-400 hover:text-black text-amber-300'}">
+                    ★ ${isMe ? 'Я играю' : 'Я'}
+                  </button>
+                ` : ''}
               </div>
-              <span class="text-[11px] font-semibold mt-1 truncate max-w-full text-slate-300">${hero.localized_name}</span>
+              <span class="text-[11px] font-semibold mt-1 truncate max-w-full ${isMe ? 'text-amber-400 font-bold' : 'text-slate-300'}">${hero.localized_name}</span>
+              <span class="text-[9px] text-slate-500">${rolesNames[idx]}</span>
             `;
           } else {
             div.innerHTML = `
               <div class="w-full aspect-[16/9] rounded-xl border-2 border-dashed border-slate-800 hover:border-slate-600 flex flex-col items-center justify-center bg-slate-900/60 transition">
                 <span class="text-xl text-slate-500 font-light">+</span>
               </div>
-              <span class="text-[10px] text-slate-500 mt-1">Поз. ${idx + 1}</span>
+              <span class="text-[10px] text-slate-500 mt-1">${rolesNames[idx]}</span>
             `;
           }
           container.appendChild(div);
@@ -222,9 +242,19 @@
       renderTeam('dire', 'dire-slots');
     }
 
+    function setMyHero(idx) {
+      if (myHeroSlotIdx === idx) {
+        myHeroSlotIdx = null; // сбросить выбор
+      } else {
+        myHeroSlotIdx = idx;
+      }
+      renderSlots();
+      renderPersonalStrategy();
+    }
+
     function openModal(team, idx) {
       targetSlot = { team, idx };
-      document.getElementById('modal-title').textContent = `Выбор героя для: ${team === 'rad' ? 'Силы Света' : 'Силы Тьмы'} (Позиция ${idx + 1})`;
+      document.getElementById('modal-title').textContent = `Выбор героя для: ${team === 'rad' ? 'Силы Света' : 'Силы Тьмы'} (${rolesNames[idx]})`;
       document.getElementById('hero-modal').classList.remove('hidden');
       document.getElementById('hero-modal').classList.add('flex');
       document.getElementById('hero-search').value = '';
@@ -240,11 +270,9 @@
     function setAttrFilter(attr) {
       currentAttr = attr;
       document.querySelectorAll('.attr-btn').forEach(btn => {
-        if (btn.dataset.attr === attr) {
-          btn.className = "attr-btn px-3 py-1.5 rounded-lg font-bold bg-sky-500 text-white";
-        } else {
-          btn.className = "attr-btn px-3 py-1.5 rounded-lg font-bold text-slate-400 hover:text-white";
-        }
+        btn.className = (btn.dataset.attr === attr) 
+          ? "attr-btn px-3 py-1.5 rounded-lg font-bold bg-sky-500 text-white" 
+          : "attr-btn px-3 py-1.5 rounded-lg font-bold text-slate-400 hover:text-white";
       });
       filterHeroesGrid();
     }
@@ -281,25 +309,35 @@
     function selectHero(heroId) {
       if (!targetSlot) return;
       draft[targetSlot.team][targetSlot.idx] = heroId;
+      // Если это первый выбранный союзник, сразу предложим его как своего героя
+      if (targetSlot.team === 'rad' && myHeroSlotIdx === null) {
+        myHeroSlotIdx = targetSlot.idx;
+      }
       closeModal();
       renderSlots();
       recalculateDraft();
+      renderPersonalStrategy();
     }
 
     function removeHero(team, idx) {
       draft[team][idx] = null;
+      if (team === 'rad' && myHeroSlotIdx === idx) {
+        myHeroSlotIdx = null;
+      }
       renderSlots();
       recalculateDraft();
+      renderPersonalStrategy();
     }
 
     function clearAll() {
       draft.rad = [null, null, null, null, null];
       draft.dire = [null, null, null, null, null];
+      myHeroSlotIdx = null;
       renderSlots();
       recalculateDraft();
+      renderPersonalStrategy();
     }
 
-    // Загрузка реальных матчапов с OpenDota
     async function fetchHeroMatchups(heroId) {
       if (matchupsCache[heroId]) return matchupsCache[heroId];
       try {
@@ -313,7 +351,7 @@
       }
     }
 
-    // Основной математический движок
+    // Расчёт винрейта драфта
     async function recalculateDraft() {
       const activeEnemies = draft.dire.filter(Boolean);
       const activeAllies = draft.rad.filter(Boolean);
@@ -338,10 +376,8 @@
       document.getElementById('rec-status').textContent = 'Считаем по OpenDota...';
       document.getElementById('status-hint').textContent = 'Загрузка матчапов...';
 
-      // Скачиваем матчапы каждого врага
       const enemyMatchups = await Promise.all(activeEnemies.map(id => fetchHeroMatchups(id)));
 
-      // Считаем совокупное преимущество для каждого героя в Доте
       const scoreMap = {};
       heroesList.forEach(h => { scoreMap[h.id] = 0; });
 
@@ -352,23 +388,20 @@
           const games = m.games_played || 0;
           const enemyWins = m.wins || 0;
           if (games >= 25 && scoreMap[candidateId] !== undefined) {
-            // В OpenDota 'wins' — это сколько раз враг (enemyId) победил кандидата
-            // Поэтому винрейт кандидата против этого врага:
             const candidateWinrate = (1 - (enemyWins / games)) * 100;
-            const diff = candidateWinrate - 50; // преимущество
+            const diff = candidateWinrate - 50;
             scoreMap[candidateId] += diff;
           }
         });
       });
 
-      // Исключаем уже выбранных героев
       const taken = new Set([...activeAllies, ...activeEnemies]);
 
       const candidates = heroesList
         .filter(h => !taken.has(h.id))
         .map(h => ({
           hero: h,
-          score: scoreMap[h.id] / activeEnemies.length // средний перевес в %
+          score: scoreMap[h.id] / activeEnemies.length
         }));
 
       candidates.sort((a, b) => b.score - a.score);
@@ -376,7 +409,6 @@
       const bestPicks = candidates.slice(0, 4);
       const worstPicks = candidates.slice(-4).reverse();
 
-      // Оценка винрейта союзников
       let radiantScoreSum = 0;
       activeAllies.forEach(alliedId => {
         radiantScoreSum += (scoreMap[alliedId] || 0) / activeEnemies.length;
@@ -386,14 +418,12 @@
       const radiantWinProb = Math.min(Math.max(50 + avgAdvantage, 10), 90);
       const direWinProb = 100 - radiantWinProb;
 
-      // Отображение шансов
       document.getElementById('rad-label').textContent = `СИЛЫ СВЕТА (RADIANT): ${radiantWinProb.toFixed(1)}%`;
       document.getElementById('dire-label').textContent = `${direWinProb.toFixed(1)}% :СИЛЫ ТЬМЫ (DIRE)`;
       document.getElementById('prob-bar').style.width = `${radiantWinProb}%`;
       document.getElementById('status-hint').textContent = `Рассчитано по ${activeEnemies.length} врагам`;
       document.getElementById('rec-status').textContent = 'Готово';
 
-      // Отрисовка контрпиков
       document.getElementById('rec-container').innerHTML = bestPicks.map(p => `
         <div class="flex items-center justify-between bg-slate-900/90 border border-emerald-900/40 p-2.5 rounded-xl">
           <div class="flex items-center gap-3">
@@ -409,7 +439,6 @@
         </div>
       `).join('');
 
-      // Отрисовка худших
       document.getElementById('worst-container').innerHTML = worstPicks.map(p => `
         <div class="flex items-center justify-between bg-slate-900/90 border border-red-900/40 p-2.5 rounded-xl">
           <div class="flex items-center gap-3">
@@ -422,13 +451,15 @@
           <span class="text-red-400 text-xs font-black pr-2">Опасно</span>
         </div>
       `).join('');
+
+      renderPersonalStrategy();
     }
 
-    // Быстрая посадка контрпика в первый свободный слот
     function pickIntoEmptyRadSlot(heroId) {
       const emptyIdx = draft.rad.findIndex(id => id === null);
       if (emptyIdx !== -1) {
         draft.rad[emptyIdx] = heroId;
+        if (myHeroSlotIdx === null) myHeroSlotIdx = emptyIdx;
         renderSlots();
         recalculateDraft();
       } else {
@@ -436,7 +467,169 @@
       }
     }
 
-    // Закрытие по ESC или фону
+    // Генерация персональной страницы билда под текущий драфт
+    function renderPersonalStrategy() {
+      const section = document.getElementById('player-strategy-section');
+      if (myHeroSlotIdx === null || !draft.rad[myHeroSlotIdx]) {
+        section.classList.add('hidden');
+        return;
+      }
+
+      const myHeroId = draft.rad[myHeroSlotIdx];
+      const myHero = heroesById[myHeroId];
+      if (!myHero) return;
+
+      const myRole = rolesNames[myHeroSlotIdx];
+      const enemies = draft.dire.map(id => heroesById[id]).filter(Boolean);
+
+      // Определяем прямых оппонентов по линии:
+      // Поз 1 (Safe) стоит против вражеской Поз 3 и 4 (Offlane)
+      // Поз 2 (Mid) стоит 1v1 против вражеской Поз 2 (Mid)
+      // Поз 3 (Offlane) стоит против вражеской Поз 1 и 5 (Safe)
+      let laneEnemies = [];
+      if (myHeroSlotIdx === 0 || myHeroSlotIdx === 4) {
+        laneEnemies = [draft.dire[2], draft.dire[3]].map(id => heroesById[id]).filter(Boolean);
+      } else if (myHeroSlotIdx === 1) {
+        laneEnemies = [draft.dire[1]].map(id => heroesById[id]).filter(Boolean);
+      } else {
+        laneEnemies = [draft.dire[0], draft.dire[4]].map(id => heroesById[id]).filter(Boolean);
+      }
+
+      // Генерация динамических рекомендаций закупа под линию
+      const hasSpammers = enemies.some(e => ['Bristleback', 'Batrider', 'Zeus', 'Skywrath Mage', 'Phantom Assassin', 'Viper'].includes(e.localized_name));
+      const hasHeavyPhys = enemies.some(e => ['Slardar', 'Axe', 'Templar Assassin', 'Phantom Assassin', 'Sven'].includes(e.localized_name));
+      const hasMagicBurst = enemies.some(e => ['Lina', 'Lion', 'Leshrak', 'Puck', 'Storm Spirit', 'Zeus'].includes(e.localized_name));
+
+      const startItems = [];
+      startItems.push({ name: 'Tango', desc: 'Обязательный реген HP' });
+      if (hasSpammers) {
+        startItems.push({ name: 'Magic Stick', desc: 'Против спама способностей врага на линии' });
+      }
+      if (myHero.primary_attr === 'str') {
+        startItems.push({ name: 'Gauntlets of Strength', desc: 'Плотность и урон для ластхита' }, { name: 'Circlet', desc: 'Статы' });
+      } else if (myHero.primary_attr === 'agi') {
+        startItems.push({ name: 'Slippers of Agility', desc: 'Ловкость и броня' }, { name: 'Quelling Blade (Топорик)', desc: 'Стабильный ластхит' });
+      } else {
+        startItems.push({ name: 'Circlet / Iron Branch', desc: 'Урон и мана' }, { name: 'Blood Grenade', desc: 'Килл-потенциал на 1–2 уровне' });
+      }
+
+      // Тайминги ключевых артефактов
+      const coreTimings = [];
+      if (myHeroSlotIdx === 0) { // Керри
+        coreTimings.push({ item: 'Power Treads / Phase Boots', time: '4–6 мин', note: 'Мобильность и статы' });
+        coreTimings.push({ item: 'Maelstrom / Battle Fury / Diffusal', time: '11–14 мин', note: 'Ключевой артефакт фарма / урона' });
+        coreTimings.push({ item: 'Black King Bar (BKB)', time: '19–23 мин', note: hasMagicBurst ? 'КРИТИЧНО против их магии' : 'Для безопасных тимфайтов' });
+      } else if (myHeroSlotIdx === 1) { // Мид
+        coreTimings.push({ item: 'Bottle & Boots of Speed', time: '2–3 мин', note: 'Контроль рун' });
+        coreTimings.push({ item: 'Blink Dagger / Orchid / Witch Blade', time: '10–13 мин', note: 'Тайминг гангов боковых линий' });
+        coreTimings.push({ item: 'BKB / Linken Sphere', time: '18–22 мин', note: 'Выживание' });
+      } else if (myHeroSlotIdx === 2) { // Хард
+        coreTimings.push({ item: 'Vanguard / Veil / Phase', time: '5–7 мин', note: 'Доминация на линии' });
+        coreTimings.push({ item: 'Blink Dagger / Pipe of Insight', time: '12–15 мин', note: hasMagicBurst ? 'Pipe обязателен команде' : 'Инициация драк' });
+      } else { // Саппорты
+        coreTimings.push({ item: 'Arcane Boots / Tranquil', time: '6–8 мин', note: 'Ресурсы для команды' });
+        coreTimings.push({ item: 'Glimmer Cape / Force Staff', time: '14–17 мин', note: 'Сейв керри от фокуса' });
+      }
+
+      const dptHeroUrl = `https://dota2protracker.com/hero/${encodeURIComponent(myHero.localized_name)}`;
+      const dotabuffHeroUrl = `https://www.dotabuff.com/heroes/${myHero.name.replace('npc_dota_hero_', '')}`;
+
+      section.innerHTML = `
+        <div class="bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border-2 border-amber-500/70 rounded-3xl p-6 shadow-2xl">
+          
+          <!-- Шапка профиля -->
+          <div class="flex flex-wrap justify-between items-start gap-4 pb-6 border-b border-slate-800">
+            <div class="flex items-center gap-4">
+              <img src="${getHeroImage(myHero)}" class="w-20 md:w-24 aspect-[16/9] object-cover rounded-2xl border-2 border-amber-400 shadow-lg">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="px-2 py-0.5 rounded bg-amber-400/20 text-amber-300 font-extrabold text-[11px] uppercase tracking-wide">Твой выбор</span>
+                  <span class="text-xs text-slate-400">${myRole}</span>
+                </div>
+                <h2 class="text-2xl md:text-3xl font-black text-white mt-0.5">${myHero.localized_name}</h2>
+                <div class="text-xs text-slate-400 mt-1">
+                  Линия против: <span class="text-red-300 font-semibold">${laneEnemies.map(e => e.localized_name).join(' + ') || 'враги ещё не выбраны'}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Ссылки на про-статистику -->
+            <div class="flex gap-2">
+              <a href="${dptHeroUrl}" target="_blank" rel="noopener" 
+                 class="px-3 py-2 bg-sky-950 hover:bg-sky-800 text-sky-300 border border-sky-700/60 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
+                <span>⚡</span> DotaProTracker
+              </a>
+              <a href="${dotabuffHeroUrl}" target="_blank" rel="noopener" 
+                 class="px-3 py-2 bg-red-950 hover:bg-red-800 text-red-300 border border-red-700/60 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
+                Dotabuff
+              </a>
+            </div>
+          </div>
+
+          <!-- Сетка стратегии -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+            
+            <!-- 1. Стартовый закуп под линию -->
+            <div class="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-4">
+              <div class="text-xs font-bold text-amber-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <span>🎒</span> Адаптивный стартовый закуп (600g)
+              </div>
+              <div class="space-y-2">
+                ${startItems.map(item => `
+                  <div class="flex justify-between items-center bg-slate-900/80 p-2.5 rounded-xl border border-slate-700/40 text-xs">
+                    <span class="font-bold text-white">${item.name}</span>
+                    <span class="text-[11px] text-slate-400 text-right">${item.desc}</span>
+                  </div>
+                `).join('')}
+              </div>
+              <div class="text-[11px] text-slate-400 mt-3 italic">
+                * Закуп скорректирован с учётом наличия спамеров способностей в пике врага.
+              </div>
+            </div>
+
+            <!-- 2. Прокачка и тайминги -->
+            <div class="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-4">
+              <div class="text-xs font-bold text-sky-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <span>⏱️</span> Тайминги и приоритеты предметов
+              </div>
+              <div class="space-y-2">
+                ${coreTimings.map(t => `
+                  <div class="bg-slate-900/80 p-2.5 rounded-xl border border-slate-700/40 text-xs">
+                    <div class="flex justify-between font-bold">
+                      <span class="text-slate-200">${t.item}</span>
+                      <span class="text-amber-400">${t.time}</span>
+                    </div>
+                    <div class="text-[11px] text-slate-400 mt-0.5">${t.note}</div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+
+            <!-- 3. План на игру и фокус -->
+            <div class="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-4">
+              <div class="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <span>🎯</span> Тактический план и фокус
+              </div>
+              <div class="space-y-3 text-xs text-slate-300">
+                <div class="bg-slate-900/80 p-2.5 rounded-xl border border-slate-700/40">
+                  <b class="text-white block mb-0.5">Первые 7 минут (Лайнинг):</b>
+                  Контролируйте Лотусы (каждые 3 мин) и мудрость (7 мин). Не идите на размен HP, если у врага преимущество по ресурсам.
+                </div>
+                <div class="bg-slate-900/80 p-2.5 rounded-xl border border-slate-700/40">
+                  <b class="text-white block mb-0.5">Приоритет в драках:</b>
+                  ${enemies.length > 0 ? `Фокусируйте тонких саппортов врага, избегайте траты ключевых кнопок в инициаторов вроде Axe/Centaur.` : 'Дождитесь выбора врагов для точного плана.'}
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      `;
+
+      section.classList.remove('hidden');
+    }
+
     window.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
     document.getElementById('hero-modal').addEventListener('click', e => {
       if (e.target.id === 'hero-modal') closeModal();
